@@ -9,7 +9,11 @@ import { createClient } from "@libsql/client";
 import * as schema from "./allSchemas";
 
 function createDbClient() {
-    const url = process.env.TURSO_DATABASE_URL ?? "file:./data/finance.db";
+    // Vercel build/runtime cannot rely on a writable local file path.
+    const fallbackUrl = process.env.NODE_ENV === "production"
+        ? "file::memory:"
+        : "file:./data/finance.db";
+    const url = process.env.TURSO_DATABASE_URL ?? fallbackUrl;
     const authToken = process.env.TURSO_AUTH_TOKEN;
 
     const client = createClient(
