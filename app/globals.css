@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+/* ─── Finance OS dark theme (replaces inline styles in app/page.js) ───
+   Mirrors the existing palette exactly so the visual translation is 1:1. */
+@theme {
+  --color-bg:           #0e0e0e;
+  --color-bg-card:      #181818;
+  --color-bg-card-2:    #161616;
+  --color-bg-input:     #0e0e0e;
+  --color-border:       #2a2a2a;
+  --color-border-soft:  #262626;
+  --color-border-mute:  #222222;
+  --color-text:         #e8e8e3;
+  --color-text-mute:    #bbbbbb;
+  --color-text-soft:    #888888;
+  --color-text-fade:    #666666;
+
+  --color-good:    #3FA66A;
+  --color-warn:    #E8A317;
+  --color-danger:  #E24B4A;
+  --color-info:    #5a9aff;
+  --color-accent:  #fff;
+
+  --color-env-survival:  #6b8aff;
+  --color-env-food:      #FFB347;
+  --color-env-freedom:   #E24B4A;
+  --color-env-sip:       #3FA66A;
+  --color-env-debt:      #9F77DD;
+  --color-env-emergency: #888888;
+
+  --font-serif: "DM Serif Display", serif;
+  --font-sans:  ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::-webkit-scrollbar { height: 6px; width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  /* Subtle ambient background — soft radial bloom in the upper area */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(90, 154, 255, 0.06), transparent 60%),
+      radial-gradient(700px 400px at 90% 5%,  rgba(159, 119, 221, 0.05), transparent 60%);
+  }
+  /* Number inputs: remove the spin buttons */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; }
+}
+
+@layer components {
+  .serif    { font-family: var(--font-serif); }
+  .card     { @apply rounded-2xl border border-[--color-border] bg-[--color-bg-card] p-5 mb-3; }
+  .mc       { @apply rounded-xl border border-[--color-border-soft] bg-[--color-bg-card-2] p-3; }
+  .pt       { @apply h-[7px] bg-[--color-border-soft] rounded overflow-hidden flex-1; }
+  .pf       { @apply h-full rounded transition-[width] duration-500; }
+  .btn      { @apply bg-white text-black border-0 rounded-lg px-[18px] py-[9px] text-[13px] cursor-pointer font-medium hover:bg-neutral-200; }
+  .btn-o    { @apply bg-transparent border border-[--color-border] rounded-lg px-[14px] py-2 text-[12.5px] cursor-pointer text-[--color-text-mute] hover:border-[--color-text-soft] hover:text-white; }
+  .tb       { @apply border-0 bg-transparent cursor-pointer px-[13px] py-[9px] text-[13px] text-[--color-text-soft] border-b-2 border-transparent whitespace-nowrap; }
+  .tb.on    { @apply text-white border-b-2 border-white font-medium; }
+
+  /* Smoother card primitive used by the new TS frontend */
+  .surface {
+    background: linear-gradient(180deg, rgba(28,28,30,0.95) 0%, rgba(20,20,22,0.95) 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 1rem;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.04) inset,
+      0 8px 28px -12px rgba(0,0,0,0.55);
+  }
+  .surface-elev {
+    background: linear-gradient(180deg, rgba(34,34,38,0.92) 0%, rgba(22,22,26,0.92) 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 1.25rem;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.05) inset,
+      0 12px 40px -16px rgba(0,0,0,0.7);
+  }
+  /* Soft button with subtle gradient + press feedback */
+  .btn-soft {
+    @apply px-4 py-2.5 rounded-xl text-sm font-medium transition-all;
+    background: linear-gradient(180deg, #2a2a2e 0%, #1c1c20 100%);
+    border: 1px solid rgba(255,255,255,0.07);
+    color: #e8e8e3;
+  }
+  .btn-soft:hover { background: linear-gradient(180deg, #313137 0%, #232328 100%); border-color: rgba(255,255,255,0.12); }
+  .btn-soft:active { transform: translateY(1px); }
+
+  .btn-primary {
+    @apply px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all;
+    background: linear-gradient(180deg, #4d8cff 0%, #2563eb 100%);
+    box-shadow: 0 6px 16px -6px rgba(37,99,235,0.55);
+  }
+  .btn-primary:hover { background: linear-gradient(180deg, #5d97ff 0%, #2f6cf0 100%); }
+  .btn-primary:active { transform: translateY(1px); box-shadow: 0 3px 10px -4px rgba(37,99,235,0.6); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-success {
+    @apply px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all;
+    background: linear-gradient(180deg, #3FA66A 0%, #2d7d4d 100%);
+    box-shadow: 0 6px 16px -6px rgba(63,166,106,0.45);
+  }
+  .btn-success:hover { background: linear-gradient(180deg, #4fb878 0%, #34905a 100%); }
+  .btn-success:active { transform: translateY(1px); }
+
+  /* Animated entry — used on cards and tab switches */
+  .fade-in { animation: fadeIn 220ms ease-out both; }
+  .slide-up { animation: slideUp 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(90,154,255,0.4); }
+  50%      { box-shadow: 0 0 0 8px rgba(90,154,255,0); }
+}
+.pulse-glow { animation: pulseGlow 2s ease-out infinite; }
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-bg {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}

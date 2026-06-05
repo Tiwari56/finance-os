@@ -1,0 +1,8 @@
+node_modules
+.next
+.env
+.env.local
+.DS_Store
+
+# Local file-backed state store (contains expense data — keep private)
+data/

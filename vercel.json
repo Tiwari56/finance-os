@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "regions": ["bom1"],
+  "crons": [
+    {
+      "path": "/api/send-report?type=daily",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/send-report?type=weekly",
+      "schedule": "0 2 * * 1"
+    }
+  ],
+  "functions": {
+    "app/api/advisor/route.js":    { "maxDuration": 60 },
+    "app/api/send-report/route.js": { "maxDuration": 60 }
+  }
+}
