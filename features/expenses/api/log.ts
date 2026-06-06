@@ -73,9 +73,10 @@ const LogBody = z.object({
     currency: z.string().optional().default("INR"),
     accountSuffix: z.string().optional(),
     note: z.string().optional(),
+    userId: z.string().optional(),   // for webhook/n8n calls
 });
 
-export async function logExpense(req: Request): Promise<Response> {
+export async function logExpense(req: Request, sessionUserId?: string): Promise<Response> {
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
 
@@ -91,6 +92,12 @@ export async function logExpense(req: Request): Promise<Response> {
 
     if (!authed(req, data.secret)) {
         return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Resolve userId — session takes priority, then body (for n8n webhook)
+    const userId = sessionUserId ?? data.userId;
+    if (!userId) {
+        return Response.json({ ok: false, error: "userId required" }, { status: 400 });
     }
 
     // Idempotency
@@ -117,6 +124,7 @@ export async function logExpense(req: Request): Promise<Response> {
     // ─── Insert expense ───────────────────────────────────────────
     await db.insert(expenses).values({
         id,
+        userId,
         ts,
         amount: data.amount,
         category,
@@ -150,6 +158,7 @@ export async function logExpense(req: Request): Promise<Response> {
             debtName = data.merchant;
             await db.insert(debts).values({
                 id: debtId,
+                userId,
                 name: data.merchant,
                 balance: 0,
                 rate: 0,

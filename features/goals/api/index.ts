@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/features/core/db/client";
 import { goals, goalContributions } from "../schema";
 import { eq, desc } from "drizzle-orm";
+import { requireUser } from "@/lib/requireUser";
 
 export async function listGoals(_req: Request): Promise<Response> {
     const rows = await db.select().from(goals).where(eq(goals.active, true)).orderBy(goals.order);
@@ -44,6 +45,9 @@ const UpsertGoalBody = z.object({
 });
 
 export async function upsertGoal(req: Request): Promise<Response> {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
     const parsed = UpsertGoalBody.safeParse(body);
@@ -52,6 +56,6 @@ export async function upsertGoal(req: Request): Promise<Response> {
     const { id: existingId, ...data } = parsed.data;
     const id = existingId ?? "goal_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
 
-    await db.insert(goals).values({ id, ...data }).onConflictDoUpdate({ target: goals.id, set: data });
+    await db.insert(goals).values({ id, userId: userId, ...data }).onConflictDoUpdate({ target: goals.id, set: data });
     return Response.json({ ok: true, id });
 }

@@ -9,6 +9,7 @@ export const expenses = sqliteTable(
     "expenses",
     {
         id: text("id").primaryKey(),
+        userId: text("user_id"),
         ts: integer("ts").notNull(),                      // epoch ms
         amount: real("amount").notNull(),
         category: text("category").notNull().default("other"),

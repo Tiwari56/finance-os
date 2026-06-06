@@ -8,6 +8,7 @@ import { expenses } from "../expenses/schema";
 
 export const debts = sqliteTable("debts", {
     id: text("id").primaryKey(),
+    userId: text("user_id"),
     name: text("name").notNull(),
     balance: real("balance").notNull().default(0),
     rate: real("rate").notNull().default(0),     // annual interest %

@@ -10,6 +10,7 @@ import { z } from "zod";
 import { db } from "@/features/core/db/client";
 import { debts, debtPayments } from "../schema";
 import { eq, desc } from "drizzle-orm";
+import { requireUser } from "@/lib/requireUser";
 
 // ─── List ─────────────────────────────────────────────────────────
 export async function listDebts(_req: Request): Promise<Response> {
@@ -31,6 +32,9 @@ const UpsertBody = z.object({
 });
 
 export async function upsertDebt(req: Request): Promise<Response> {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
     const parsed = UpsertBody.safeParse(body);
@@ -39,7 +43,7 @@ export async function upsertDebt(req: Request): Promise<Response> {
     const { id: existingId, ...data } = parsed.data;
     const id = existingId ?? "debt_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
 
-    await db.insert(debts).values({ id, ...data }).onConflictDoUpdate({ target: debts.id, set: data });
+    await db.insert(debts).values({ id, userId: userId, ...data }).onConflictDoUpdate({ target: debts.id, set: data });
     return Response.json({ ok: true, id });
 }
 

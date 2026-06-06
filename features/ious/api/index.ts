@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/features/core/db/client";
 import { ious } from "../schema";
 import { eq, isNull } from "drizzle-orm";
+import { requireUser } from "@/lib/requireUser";
 
 // ─── List ─────────────────────────────────────────────────────────
 export async function listIous(_req: Request): Promise<Response> {
@@ -18,6 +19,9 @@ const AddBody = z.object({
 });
 
 export async function addIou(req: Request): Promise<Response> {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
     const parsed = AddBody.safeParse(body);
@@ -26,7 +30,7 @@ export async function addIou(req: Request): Promise<Response> {
     const id = "iou_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
     const ts = parsed.data.ts ?? Date.now();
 
-    await db.insert(ious).values({ id, ts, ...parsed.data });
+    await db.insert(ious).values({ id, ts, userId: userId, ...parsed.data });
     return Response.json({ ok: true, id });
 }
 

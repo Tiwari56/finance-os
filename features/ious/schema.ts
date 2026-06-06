@@ -9,6 +9,7 @@ export const ious = sqliteTable(
     "ious",
     {
         id: text("id").primaryKey(),
+        userId: text("user_id"),
         name: text("name").notNull(),
         amount: real("amount").notNull(),
         ts: integer("ts").notNull(),           // when lent

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/features/core/db/client";
 import { bills, billPayments } from "../schema";
 import { eq, desc } from "drizzle-orm";
+import { requireUser } from "@/lib/requireUser";
 
 function monthKey(d: Date = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -42,6 +43,9 @@ const UpsertBillBody = z.object({
 });
 
 export async function upsertBill(req: Request): Promise<Response> {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
     const parsed = UpsertBillBody.safeParse(body);
@@ -50,7 +54,7 @@ export async function upsertBill(req: Request): Promise<Response> {
     const { id: existingId, ...data } = parsed.data;
     const id = existingId ?? "bill_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
 
-    await db.insert(bills).values({ id, ...data }).onConflictDoUpdate({ target: bills.id, set: data });
+    await db.insert(bills).values({ id, userId: userId, ...data }).onConflictDoUpdate({ target: bills.id, set: data });
     return Response.json({ ok: true, id });
 }
 

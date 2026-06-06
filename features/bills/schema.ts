@@ -7,6 +7,7 @@ import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core
 
 export const bills = sqliteTable("bills", {
     id: text("id").primaryKey(),
+    userId: text("user_id"),
     label: text("label").notNull(),
     amount: real("amount").notNull(),
     dueDay: integer("due_day").notNull(),         // day of month (1-31)

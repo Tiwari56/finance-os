@@ -7,6 +7,7 @@ import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core
 
 export const goals = sqliteTable("goals", {
     id: text("id").primaryKey(),
+    userId: text("user_id"),
     label: text("label").notNull(),
     needed: real("needed").notNull(),
     saved: real("saved").notNull().default(0),

@@ -6,3 +6,5 @@ node_modules
 
 # Local file-backed state store (contains expense data — keep private)
 data/
+.vercel
+.env*.local

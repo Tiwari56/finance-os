@@ -9,11 +9,11 @@ import { Surface, apiPost, apiFetch, Loading } from "@/lib/ui";
 //   📊 SPENDING HEALTH   💪 CAPACITY CHECK   🚨 TOP LEAK
 //   💎 TOP OPPORTUNITY   📅 NEXT 7 DAYS
 const SECTION_PATTERNS: Array<{ icon: string; key: string; label: string; accent: string }> = [
-    { icon: "📊", key: "health",      label: "Spending health",  accent: "from-blue-500/15 to-blue-500/0" },
-    { icon: "💪", key: "capacity",    label: "Capacity check",   accent: "from-purple-500/15 to-purple-500/0" },
-    { icon: "🚨", key: "leak",        label: "Top leak",         accent: "from-red-500/15 to-red-500/0" },
-    { icon: "💎", key: "opportunity", label: "Top opportunity",  accent: "from-emerald-500/15 to-emerald-500/0" },
-    { icon: "📅", key: "plan",        label: "Next 7 days",      accent: "from-yellow-500/15 to-yellow-500/0" },
+    { icon: "📊", key: "health", label: "Spending health", accent: "from-blue-500/15 to-blue-500/0" },
+    { icon: "💪", key: "capacity", label: "Capacity check", accent: "from-purple-500/15 to-purple-500/0" },
+    { icon: "🚨", key: "leak", label: "Top leak", accent: "from-red-500/15 to-red-500/0" },
+    { icon: "💎", key: "opportunity", label: "Top opportunity", accent: "from-emerald-500/15 to-emerald-500/0" },
+    { icon: "📅", key: "plan", label: "Next 7 days", accent: "from-yellow-500/15 to-yellow-500/0" },
 ];
 
 interface Section { icon: string; label: string; body: string; accent: string }
@@ -57,9 +57,9 @@ export function AIInsight({ compact = false }: Props) {
 
     const { data, isFetching, refetch, error } = useQuery({
         queryKey: ["ai-analysis", refreshKey],
-        queryFn:  () => apiPost("/api/advisor", { mode: "analyze" }),
+        queryFn: () => apiPost("/api/advisor", { mode: "analyze" }),
         // Only fetch when user explicitly requests it — never on mount
-        enabled:  aiAvailable && hasRequested && !compact,
+        enabled: aiAvailable && hasRequested && !compact,
         staleTime: 30 * 60 * 1000,
         refetchOnWindowFocus: false,
     });
@@ -129,44 +129,44 @@ export function AIInsight({ compact = false }: Props) {
             {(hasRequested || data) && (() => {
                 const sections = parseAnalysis(data?.reply ?? "");
                 return (
-            <div className="p-4">
-                {isFetching && !data && (
-                    <div className="space-y-2">
-                        {[1, 2, 3].map(i => (
-                            <div key={i} className="h-14 rounded-lg shimmer-bg" />
-                        ))}
-                        <p className="text-xs text-zinc-500 text-center pt-2">Reading your data…</p>
-                    </div>
-                )}
-                {error && (
-                    <p className="text-xs text-red-400">Failed to analyze — {(error as Error).message}</p>
-                )}
-                {!isFetching && sections.length === 0 && data?.reply && (
-                    <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{data.reply}</p>
-                )}
-                {sections.length > 0 && (
-                    <div className="space-y-2">
-                        {(compact ? sections.slice(0, 2) : sections).map((s, i) => (
-                            <div
-                                key={i}
-                                className={`rounded-xl p-3 bg-gradient-to-br ${s.accent} border border-white/[0.04] slide-up`}
-                                style={{ animationDelay: `${i * 60}ms` }}
-                            >
-                                <div className="flex items-center gap-2 mb-1.5">
-                                    <span className="text-base">{s.icon}</span>
-                                    <p className="text-[11px] uppercase tracking-wider text-zinc-400 font-medium">{s.label}</p>
-                                </div>
-                                <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{s.body}</p>
+                    <div className="p-4">
+                        {isFetching && !data && (
+                            <div className="space-y-2">
+                                {[1, 2, 3].map(i => (
+                                    <div key={i} className="h-14 rounded-lg shimmer-bg" />
+                                ))}
+                                <p className="text-xs text-zinc-500 text-center pt-2">Reading your data…</p>
                             </div>
-                        ))}
-                        {compact && sections.length > 2 && (
-                            <p className="text-[11px] text-zinc-500 text-center pt-1">
-                                Open the AI tab for full analysis ({sections.length - 2} more sections)
-                            </p>
+                        )}
+                        {error && (
+                            <p className="text-xs text-red-400">Failed to analyze — {(error as Error).message}</p>
+                        )}
+                        {!isFetching && sections.length === 0 && data?.reply && (
+                            <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{data.reply}</p>
+                        )}
+                        {sections.length > 0 && (
+                            <div className="space-y-2">
+                                {(compact ? sections.slice(0, 2) : sections).map((s, i) => (
+                                    <div
+                                        key={i}
+                                        className={`rounded-xl p-3 bg-gradient-to-br ${s.accent} border border-white/[0.04] slide-up`}
+                                        style={{ animationDelay: `${i * 60}ms` }}
+                                    >
+                                        <div className="flex items-center gap-2 mb-1.5">
+                                            <span className="text-base">{s.icon}</span>
+                                            <p className="text-[11px] uppercase tracking-wider text-zinc-400 font-medium">{s.label}</p>
+                                        </div>
+                                        <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{s.body}</p>
+                                    </div>
+                                ))}
+                                {compact && sections.length > 2 && (
+                                    <p className="text-[11px] text-zinc-500 text-center pt-1">
+                                        Open the AI tab for full analysis ({sections.length - 2} more sections)
+                                    </p>
+                                )}
+                            </div>
                         )}
                     </div>
-                )}
-            </div>
                 );
             })()}
         </Surface>

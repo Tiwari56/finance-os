@@ -19,7 +19,7 @@ const manifest: FeatureManifest = {
     schemas: [expenses],
 
     routes: {
-        "POST /log": logExpense,
+        "POST /log": ((req: Request) => logExpense(req)) as any,
         "GET  /list": listExpenses,
         "POST /delete": deleteExpense,
     },

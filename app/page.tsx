@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSession, signOut } from "next-auth/react";
 import { fmt, fmtL } from "@/lib/format";
 import {
     Surface, Pill, Money, ProgressBar, Collapsible, Input,
@@ -31,7 +32,7 @@ function salaryCycle(profile: StateData["profile"], allowance: StateData["allowa
         : new Date(y, m, salaryDay);
     const totalDays = Math.round((nextSalary.getTime() - lastSalary.getTime()) / 86400000);
     const dayOfCycle = Math.max(1, Math.round((now.getTime() - lastSalary.getTime()) / 86400000) + 1);
-    const daysLeft  = Math.max(0, Math.round((nextSalary.getTime() - now.getTime()) / 86400000));
+    const daysLeft = Math.max(0, Math.round((nextSalary.getTime() - now.getTime()) / 86400000));
     const cyclePct = Math.min(100, Math.round((dayOfCycle / totalDays) * 100));
     const isSalaryDay = today === salaryDay;
     return {
@@ -352,7 +353,7 @@ function DebtCommand({
     debts, envelopes, envelopeSpent, cycle,
 }: { debts: StateData["debts"]; envelopes: Envelope[]; envelopeSpent: Record<string, number>; cycle: Cycle }) {
     const active = debts.list.filter(d => d.balance > 0);
-    const totalCC     = active.filter(d => d.type === "cc").reduce((s, d) => s + d.balance, 0);
+    const totalCC = active.filter(d => d.type === "cc").reduce((s, d) => s + d.balance, 0);
     const totalFormal = active.filter(d => d.type === "formal").reduce((s, d) => s + d.balance, 0);
     const totalFriend = active.filter(d => d.type === "friend").reduce((s, d) => s + d.balance, 0);
     const sortedByRate = [...active].sort((a, b) => b.rate - a.rate);
@@ -441,7 +442,7 @@ function DebtCommand({
 
 function DebtSlice({ label, value, color, priority }: { label: string; value: number; color: "red" | "orange" | "purple"; priority?: boolean }) {
     const colors = {
-        red:    { bg: "bg-red-500/10", border: "border-red-500/20", text: "text-red-300" },
+        red: { bg: "bg-red-500/10", border: "border-red-500/20", text: "text-red-300" },
         orange: { bg: "bg-orange-500/10", border: "border-orange-500/20", text: "text-orange-300" },
         purple: { bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-300" },
     } as const;
@@ -606,16 +607,16 @@ function AddExpenseSheet({ onClose }: { onClose: () => void }) {
     });
 
     const CATEGORIES = [
-        { id: "food",          icon: "🍱", label: "Food" },
-        { id: "freedom",       icon: "🎯", label: "Lifestyle" },
-        { id: "commute",       icon: "🚇", label: "Commute" },
+        { id: "food", icon: "🍱", label: "Food" },
+        { id: "freedom", icon: "🎯", label: "Lifestyle" },
+        { id: "commute", icon: "🚇", label: "Commute" },
         { id: "subscriptions", icon: "📺", label: "Subs" },
-        { id: "family",        icon: "📱", label: "Family" },
-        { id: "rent",          icon: "🏠", label: "Rent" },
-        { id: "maintenance",   icon: "⚡", label: "Bills" },
-        { id: "debt",          icon: "💳", label: "Debt" },
-        { id: "sip",           icon: "📈", label: "SIP" },
-        { id: "other",         icon: "📦", label: "Other" },
+        { id: "family", icon: "📱", label: "Family" },
+        { id: "rent", icon: "🏠", label: "Rent" },
+        { id: "maintenance", icon: "⚡", label: "Bills" },
+        { id: "debt", icon: "💳", label: "Debt" },
+        { id: "sip", icon: "📈", label: "SIP" },
+        { id: "other", icon: "📦", label: "Other" },
     ];
 
     return (
@@ -714,9 +715,9 @@ function DebtsTab() {
     const avalancheTarget = sortedByRate[0];
 
     const groups = [
-        { key: "cc",     label: "💳 Credit cards", debts: active.filter(d => d.type === "cc") },
-        { key: "formal", label: "🏦 Loans",        debts: active.filter(d => d.type === "formal") },
-        { key: "friend", label: "🤝 Friends",      debts: active.filter(d => d.type === "friend") },
+        { key: "cc", label: "💳 Credit cards", debts: active.filter(d => d.type === "cc") },
+        { key: "formal", label: "🏦 Loans", debts: active.filter(d => d.type === "formal") },
+        { key: "friend", label: "🤝 Friends", debts: active.filter(d => d.type === "friend") },
     ];
 
     return (
@@ -845,7 +846,7 @@ function HistoryTab() {
                             const total = m.spent + m.debtPaid;
                             const pct = (total / maxVal) * 100;
                             const spentPct = total > 0 ? (m.spent / total) * pct : 0;
-                            const paidPct  = total > 0 ? (m.debtPaid / total) * pct : 0;
+                            const paidPct = total > 0 ? (m.debtPaid / total) * pct : 0;
                             return (
                                 <Surface key={m.label} className={`p-4 ${m.isCurrent ? "!border-yellow-500/30" : ""}`}>
                                     <div className="flex items-center justify-between mb-2">
@@ -887,20 +888,21 @@ function AdvisorTab() {
 //  ROOT
 // ════════════════════════════════════════════════════════════════════
 const TABS = [
-    { id: "today",   label: "Today",   icon: "🏠" },
-    { id: "debts",   label: "Debts",   icon: "⚔️" },
+    { id: "today", label: "Today", icon: "🏠" },
+    { id: "debts", label: "Debts", icon: "⚔️" },
     { id: "history", label: "History", icon: "📊" },
-    { id: "advisor", label: "AI",      icon: "🧠" },
-    { id: "config",  label: "Config",  icon: "⚙️" },
+    { id: "advisor", label: "AI", icon: "🧠" },
+    { id: "config", label: "Config", icon: "⚙️" },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
 
 export default function Home() {
     const [tab, setTab] = useState<TabId>("today");
+    const { data: session } = useSession();
     const { data: stateData, isLoading } = useQuery<StateData>({
         queryKey: ["state"],
-        queryFn:  () => apiFetch("/api/v2/state"),
+        queryFn: () => apiFetch("/api/v2/state"),
         refetchInterval: 60_000,
     });
 
@@ -922,13 +924,26 @@ export default function Home() {
                             <p className="text-[10px] text-zinc-500 leading-tight">{dateStr}</p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setTab("config")}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-all"
-                        aria-label="Settings"
-                    >
-                        ⚙️
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {session?.user?.image ? (
+                            <img
+                                src={session.user.image}
+                                alt={session.user.name ?? ""}
+                                className="w-8 h-8 rounded-full border border-white/20"
+                            />
+                        ) : (
+                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm font-medium text-zinc-300">
+                                {session?.user?.name?.charAt(0)?.toUpperCase() ?? "?"}
+                            </div>
+                        )}
+                        <button
+                            onClick={() => signOut({ callbackUrl: "/login" })}
+                            className="text-xs text-zinc-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
+                            title="Sign out"
+                        >
+                            ↩
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -938,11 +953,11 @@ export default function Home() {
                 {!isLoading && !dbReady && <DBNotReady />}
                 {!isLoading && dbReady && stateData && (
                     <>
-                        {tab === "today"   && <TodayTab data={stateData} />}
-                        {tab === "debts"   && <DebtsTab />}
+                        {tab === "today" && <TodayTab data={stateData} />}
+                        {tab === "debts" && <DebtsTab />}
                         {tab === "history" && <HistoryTab />}
                         {tab === "advisor" && <AdvisorTab />}
-                        {tab === "config"  && <ConfigTab data={stateData} />}
+                        {tab === "config" && <ConfigTab data={stateData} />}
                     </>
                 )}
             </main>

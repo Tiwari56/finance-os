@@ -14,18 +14,22 @@ import { envelopes } from "@/features/envelopes/schema";
 import { goals } from "@/features/goals/schema";
 import { profile, flags } from "@/features/core/db/schema";
 import { dailyAllowance } from "@/features/allowance/lib/math";
-import { gte, eq, desc } from "drizzle-orm";
+import { gte, eq, desc, and } from "drizzle-orm";
+import { requireUser } from "@/lib/requireUser";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     try {
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
         const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-        // Parallel DB reads
+        // Parallel DB reads — all scoped to userId
         const [
             profileRows,
             flagRows,
@@ -40,17 +44,17 @@ export async function GET() {
             activeGoals,
             recentDebtPayments,
         ] = await Promise.all([
-            db.select().from(profile).limit(1),
-            db.select().from(flags).limit(1),
-            db.select().from(envelopes).orderBy(envelopes.order),
-            db.select().from(debts).orderBy(debts.order),
-            db.select().from(expenses).orderBy(desc(expenses.ts)).limit(30),
-            db.select().from(expenses).where(gte(expenses.ts, monthStart)),
-            db.select().from(expenses).where(gte(expenses.ts, dayStart)),
-            db.select().from(bills).where(eq(bills.active, true)).orderBy(bills.order),
+            db.select().from(profile).where(eq(profile.id, userId as string)).limit(1),
+            db.select().from(flags).where(eq(flags.id, userId as string)).limit(1),
+            db.select().from(envelopes).where(eq(envelopes.userId, userId as string)).orderBy(envelopes.order),
+            db.select().from(debts).where(eq(debts.userId, userId as string)).orderBy(debts.order),
+            db.select().from(expenses).where(eq(expenses.userId, userId as string)).orderBy(desc(expenses.ts)).limit(30),
+            db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, monthStart))),
+            db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, dayStart))),
+            db.select().from(bills).where(and(eq(bills.userId, userId as string), eq(bills.active, true))).orderBy(bills.order),
             db.select().from(billPayments).where(eq(billPayments.month, monthKey)),
-            db.select().from(ious).orderBy(ious.ts),
-            db.select().from(goals).where(eq(goals.active, true)).orderBy(goals.order),
+            db.select().from(ious).where(eq(ious.userId, userId as string)).orderBy(ious.ts),
+            db.select().from(goals).where(and(eq(goals.userId, userId as string), eq(goals.active, true))).orderBy(goals.order),
             db.select().from(debtPayments).where(gte(debtPayments.ts, monthStart)),
         ]);
 
