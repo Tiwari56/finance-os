@@ -44,6 +44,9 @@ interface Props { compact?: boolean }
 
 export function AIInsight({ compact = false }: Props) {
     const [refreshKey, setRefreshKey] = useState(0);
+    // Compact (home page) never auto-fetches — user must explicitly open the AI tab.
+    // Full mode also requires a manual click to avoid burning tokens on every mount.
+    const [hasRequested, setHasRequested] = useState(false);
 
     const { data: healthData } = useQuery({
         queryKey: ["health-anthropic"],
@@ -55,8 +58,9 @@ export function AIInsight({ compact = false }: Props) {
     const { data, isFetching, refetch, error } = useQuery({
         queryKey: ["ai-analysis", refreshKey],
         queryFn:  () => apiPost("/api/advisor", { mode: "analyze" }),
-        enabled:  aiAvailable,
-        staleTime: 30 * 60 * 1000,         // cached 30 min — don't burn tokens
+        // Only fetch when user explicitly requests it — never on mount
+        enabled:  aiAvailable && hasRequested && !compact,
+        staleTime: 30 * 60 * 1000,
         refetchOnWindowFocus: false,
     });
 
@@ -74,7 +78,22 @@ export function AIInsight({ compact = false }: Props) {
         );
     }
 
-    const sections = parseAnalysis(data?.reply ?? "");
+    // Compact (home page) — static teaser, no API call
+    if (compact) {
+        return (
+            <Surface className="p-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/30 to-blue-500/30 flex items-center justify-center shrink-0">
+                        <span className="text-base">🧠</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-zinc-200">AI Coach ready</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">Open the AI tab to run a full analysis of your finances.</p>
+                    </div>
+                </div>
+            </Surface>
+        );
+    }
 
     return (
         <Surface elevated className="overflow-hidden">
@@ -98,7 +117,18 @@ export function AIInsight({ compact = false }: Props) {
                 </button>
             </div>
 
-            {/* Body */}
+            {/* Body — show Run Analysis prompt if not yet requested */}
+            {!hasRequested && !data && (
+                <div className="p-6 flex flex-col items-center gap-4 text-center">
+                    <p className="text-xs text-zinc-500">Each run uses ~1–2K tokens (~$0.003).</p>
+                    <button onClick={() => setHasRequested(true)} className="btn-primary px-6">
+                        Run Analysis
+                    </button>
+                </div>
+            )}
+            {(hasRequested || data) && (() => {
+                const sections = parseAnalysis(data?.reply ?? "");
+                return (
             <div className="p-4">
                 {isFetching && !data && (
                     <div className="space-y-2">
@@ -137,6 +167,8 @@ export function AIInsight({ compact = false }: Props) {
                     </div>
                 )}
             </div>
+                );
+            })()}
         </Surface>
     );
 }
