@@ -3,6 +3,8 @@
 //  Update the single-row profile (name, income, salaryDay).
 // ════════════════════════════════════════════════════════════════
 
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/features/core/db/client";

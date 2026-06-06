@@ -13,8 +13,8 @@ function createDbClient() {
     const fallbackUrl = process.env.NODE_ENV === "production"
         ? "file::memory:"
         : "file:./data/finance.db";
-    const url = process.env.TURSO_DATABASE_URL ?? fallbackUrl;
-    const authToken = process.env.TURSO_AUTH_TOKEN;
+    const url = process.env.TURSO_DATABASE_URL || fallbackUrl;
+    const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
 
     const client = createClient(
         authToken ? { url, authToken } : { url }

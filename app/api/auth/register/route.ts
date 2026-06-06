@@ -6,6 +6,8 @@ import { users } from "@/features/core/db/schema";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
     const { name, email, password } = await req.json();
 
