@@ -62,8 +62,8 @@ export default function LoginPage() {
                                 key={m}
                                 onClick={() => { setMode(m); setError(""); }}
                                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${mode === m
-                                        ? "bg-white/10 text-white"
-                                        : "text-zinc-500 hover:text-zinc-300"
+                                    ? "bg-white/10 text-white"
+                                    : "text-zinc-500 hover:text-zinc-300"
                                     }`}
                             >
                                 {m === "login" ? "Sign in" : "Create account"}

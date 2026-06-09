@@ -1,6 +1,7 @@
 // ════════════════════════════════════════════════════════════════
-//  auth.ts — NextAuth v5 config
-//  Providers: Credentials (email + password)
+//  auth.ts — NextAuth v5 (Node runtime)
+//  Composes the Edge-safe config from ./auth.config.ts and adds
+//  the DB adapter + Credentials provider here (Node-only deps).
 // ════════════════════════════════════════════════════════════════
 
 import NextAuth from "next-auth";
@@ -10,15 +11,13 @@ import bcrypt from "bcryptjs";
 import { db } from "@/features/core/db/client";
 import { users } from "@/features/core/db/schema";
 import { eq } from "drizzle-orm";
+import authConfig from "./auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+    ...authConfig,
     adapter: DrizzleAdapter(db, {
         usersTable: users,
     } as never),
-    session: { strategy: "jwt" },
-    pages: {
-        signIn: "/login",
-    },
     providers: [
         Credentials({
             name: "Email",
@@ -47,14 +46,4 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             },
         }),
     ],
-    callbacks: {
-        jwt({ token, user }) {
-            if (user) token.id = user.id;
-            return token;
-        },
-        session({ session, token }) {
-            if (token?.id) session.user.id = token.id as string;
-            return session;
-        },
-    },
 });

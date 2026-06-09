@@ -1,14 +1,24 @@
-// middleware.ts — protect all pages except /login and /api/auth/*
-import { auth } from "@/auth";
+// ════════════════════════════════════════════════════════════════
+//  middleware.ts — protects all pages except public ones.
+//  Uses the Edge-safe auth.config (no DB adapter) so it never
+//  imports the libSQL client into the Edge runtime.
+// ════════════════════════════════════════════════════════════════
+
+import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
+import authConfig from "@/auth.config";
+
+const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
     const isLoggedIn = !!req.auth;
-    const isAuthRoute = req.nextUrl.pathname.startsWith("/api/auth");
-    const isLoginPage = req.nextUrl.pathname === "/login";
+    const path = req.nextUrl.pathname;
+
+    const isAuthRoute     = path.startsWith("/api/auth");
+    const isLoginPage     = path === "/login";
     const isPublicApiRoute =
-        req.nextUrl.pathname.startsWith("/api/log-expense") || // for n8n webhook
-        req.nextUrl.pathname.startsWith("/api/health");
+        path.startsWith("/api/log-expense") || // n8n webhook (uses LOG_SECRET)
+        path.startsWith("/api/health");
 
     if (isAuthRoute || isLoginPage || isPublicApiRoute) {
         return NextResponse.next();

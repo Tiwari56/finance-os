@@ -76,7 +76,18 @@ const LogBody = z.object({
     userId: z.string().optional(),   // for webhook/n8n calls
 });
 
-export async function logExpense(req: Request, sessionUserId?: string): Promise<Response> {
+// Supports both call styles:
+//   1. Direct from app/api/log-expense:  logExpense(req, sessionUserId?)
+//   2. Via catch-all router:             logExpense(req, { userId, ... })
+// Two call signatures supported:
+//   1. Direct from app/api/log-expense:  logExpense(req, sessionUserId?: string)
+//   2. Via catch-all router:             logExpense(req, ctx: { userId?: string, ... })
+export async function logExpense(
+    req: Request,
+    arg2?: string | { userId?: string },
+): Promise<Response> {
+    const sessionUserId = typeof arg2 === "string" ? arg2 : arg2?.userId;
+
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
 
@@ -94,7 +105,7 @@ export async function logExpense(req: Request, sessionUserId?: string): Promise<
         return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Resolve userId — session takes priority, then body (for n8n webhook)
+    // Resolve userId — session takes priority, then body (for n8n/SMS webhook)
     const userId = sessionUserId ?? data.userId;
     if (!userId) {
         return Response.json({ ok: false, error: "userId required" }, { status: 400 });

@@ -30,17 +30,63 @@ export interface Goal {
 export interface Envelope {
     id: string; label: string; amount: number; icon: string; locked: boolean;
 }
+export interface SmartAllowance {
+    suggestedToday: number;
+    baselinePerDay: number;
+    smartPerDay: number;
+    obligations: number;
+    safelyAvailableFlex: number;
+    cycle: {
+        daysInCycle: number;
+        dayOfCycle: number;
+        daysLeft: number;
+        pctCycleGone: number;
+        pctFlexGone: number;
+        cycleStart: string;
+        cycleEnd: string;
+    };
+    pace: {
+        overpaceBy: number;
+        verdict: "under" | "on-track" | "watch" | "over";
+    };
+    rationale: string;
+}
+
+export interface DebtTypeSummary {
+    cc: number;
+    formal: number;
+    friend: number;
+}
+
+export interface CategorySpend {
+    category: string;
+    amount: number;
+    label: string;
+    icon: string;
+}
+
+export interface OverviewData {
+    cycleStart: string;
+    cycleSpendByCategory: CategorySpend[];
+    topMerchants: { merchant: string; amount: number }[];
+    netWealth: number;
+    billsRemaining: number;
+    debtEmiRemaining: number;
+}
+
 export interface StateData {
     ok: boolean; error?: string;
     profile: { name: string; income: number; salaryDay: number };
     flags: { setupComplete: boolean; salaryReceived: boolean };
     allowance: AllowanceData;
+    smartAllowance: SmartAllowance;
     envelopes: Envelope[];
     expenses: { recent: Expense[]; monthTotal: number; todayTotal: number };
     bills: Bill[];
-    debts: { list: Debt[]; totalOutstanding: number; monthPaid: number };
+    debts: { list: Debt[]; totalOutstanding: number; monthPaid: number; byType: DebtTypeSummary };
     ious: { open: IOU[]; totalOpen: number };
     goals: Goal[];
+    overview: OverviewData;
 }
 
 // ─── API helpers ───────────────────────────────────────────────────

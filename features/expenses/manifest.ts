@@ -19,7 +19,9 @@ const manifest: FeatureManifest = {
     schemas: [expenses],
 
     routes: {
-        "POST /log": ((req: Request) => logExpense(req)) as any,
+        // Pass-through wrapper preserves the catch-all router's (req, ctx)
+        // signature so logExpense receives the resolved session userId.
+        "POST /log": ((...a: unknown[]) => logExpense(...a as Parameters<typeof logExpense>)) as any,
         "GET  /list": listExpenses,
         "POST /delete": deleteExpense,
     },

@@ -55,7 +55,7 @@ function TodayTab({ data }: { data: StateData }) {
         onSuccess: () => qc.invalidateQueries({ queryKey: ["state"] }),
     });
 
-    const { allowance, bills, expenses, debts, ious, goals, envelopes, profile } = data;
+    const { allowance, bills, expenses, debts, ious, goals, envelopes, profile, smartAllowance: smart } = data;
     const cycle = salaryCycle(profile, allowance);
     const urgent = bills.filter(b => b.overdue || b.dueSoon);
     const todayExp = expenses.recent.filter(e => e.ts >= startOfDay());
@@ -69,7 +69,7 @@ function TodayTab({ data }: { data: StateData }) {
         <div className="space-y-3 pb-32 fade-in">
 
             {/* ── Salary cycle hero ───────────────────────────────── */}
-            <SalaryCycleHero cycle={cycle} allowance={allowance} profile={profile} billsRemaining={billsRemaining} />
+            <SalaryCycleHero cycle={cycle} allowance={allowance} profile={profile} billsRemaining={billsRemaining} smart={smart} />
 
             {/* ── Salary day celebration (only on day=1) ──────────── */}
             {cycle.isSalaryDay && (
@@ -241,16 +241,35 @@ function TodayTab({ data }: { data: StateData }) {
 // ════════════════════════════════════════════════════════════════════
 type Cycle = ReturnType<typeof salaryCycle>;
 function SalaryCycleHero({
-    cycle, allowance, profile, billsRemaining,
-}: { cycle: Cycle; allowance: StateData["allowance"]; profile: StateData["profile"]; billsRemaining: number }) {
-    const accent = allowance.pctBudgetGone > 80 ? "bad" : allowance.pctBudgetGone > 60 ? "warn" : "good";
+    cycle, allowance, profile, billsRemaining, smart,
+}: {
+    cycle: Cycle;
+    allowance: StateData["allowance"];
+    profile: StateData["profile"];
+    billsRemaining: number;
+    smart: StateData["smartAllowance"];
+}) {
+    // Map pace verdict → UI accent
+    const accentMap: Record<typeof smart.pace.verdict, "good" | "warn" | "bad" | "good"> = {
+        under:     "good",
+        "on-track": "good",
+        watch:     "warn",
+        over:      "bad",
+    };
+    const accent = accentMap[smart.pace.verdict];
+
+    const verdictLabel: Record<typeof smart.pace.verdict, string> = {
+        under:     "Under pace",
+        "on-track": "On track",
+        watch:     "Watch pace",
+        over:      "Burning fast",
+    };
+
     const heroGradient = accent === "bad"
         ? "from-red-500/20 via-red-500/5 to-transparent"
         : accent === "warn"
             ? "from-yellow-500/15 via-yellow-500/5 to-transparent"
             : "from-emerald-500/15 via-emerald-500/5 to-transparent";
-
-    const remainingToday = Math.max(0, allowance.perDay - allowance.todaySpent);
 
     return (
         <Surface elevated className="overflow-hidden relative">
@@ -266,37 +285,45 @@ function SalaryCycleHero({
                         </span>
                     </div>
                     <Pill color={accent === "good" ? "green" : accent === "warn" ? "yellow" : "red"}>
-                        {accent === "good" ? "On track" : accent === "warn" ? "Watch pace" : "Burning fast"}
+                        {verdictLabel[smart.pace.verdict]}
                     </Pill>
                 </div>
 
-                {/* Big number: today's allowance left */}
+                {/* Big number: today's SMART allowance */}
                 <p className="text-[11px] text-zinc-400 uppercase tracking-widest mb-1">You can spend today</p>
-                <div className="flex items-baseline gap-3 mb-3">
-                    <Money value={remainingToday} large accent={accent as "good" | "warn" | "bad"} />
-                    <span className="text-xs text-zinc-500">of {fmt(allowance.perDay)} daily</span>
+                <div className="flex items-baseline gap-3 mb-1">
+                    <Money value={smart.suggestedToday} large accent={accent} />
+                    <span className="text-xs text-zinc-500">
+                        of {fmt(smart.smartPerDay)} smart-daily
+                    </span>
                 </div>
+
+                {/* Why this number — one-line rationale */}
+                <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">{smart.rationale}</p>
 
                 {/* Cycle progress with payday marker */}
                 <div className="relative">
-                    <ProgressBar pct={allowance.pctBudgetGone} />
-                    {/* "where we should be" marker line */}
+                    <ProgressBar pct={smart.cycle.pctFlexGone} />
                     <div
                         className="absolute top-0 h-1.5 w-px bg-white/30"
-                        style={{ left: `${cycle.cyclePct}%` }}
-                        title={`You should be at ~${cycle.cyclePct}% by now`}
+                        style={{ left: `${smart.cycle.pctCycleGone}%` }}
+                        title={`You should be at ~${smart.cycle.pctCycleGone}% by now`}
                     />
                 </div>
                 <div className="flex justify-between text-[11px] text-zinc-500 mt-2">
-                    <span>{allowance.pctBudgetGone}% flex spent</span>
+                    <span>{smart.cycle.pctFlexGone}% flex spent · {smart.cycle.pctCycleGone}% cycle gone</span>
                     <span>Payday in {cycle.daysLeft}d · {cycle.nextSalaryStr}</span>
                 </div>
 
                 {/* Quick metrics row */}
                 <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/5">
                     <Stat label="Income" value={fmtL(profile.income)} />
-                    <Stat label="Bills to pay" value={billsRemaining > 0 ? fmt(billsRemaining) : "All clear"} subtle={billsRemaining === 0} />
-                    <Stat label="Flex left" value={fmt(allowance.remaining)} subtle />
+                    <Stat
+                        label="Bills to pay"
+                        value={billsRemaining > 0 ? fmt(billsRemaining) : "All clear"}
+                        subtle={billsRemaining === 0}
+                    />
+                    <Stat label="Flex left" value={fmt(smart.safelyAvailableFlex)} subtle />
                 </div>
             </div>
         </Surface>
@@ -486,6 +513,18 @@ function computeEnvelopeSpent(envelopes: Envelope[], expenses: Expense[], sinceT
     return out;
 }
 
+function QuickStat({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
+    return (
+        <Surface className="p-3">
+            <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 uppercase tracking-wider">
+                <span className="text-xs">{icon}</span>
+                <span className="truncate">{label}</span>
+            </div>
+            <p className={`text-sm font-semibold tabular-nums mt-1 ${color}`}>{value}</p>
+        </Surface>
+    );
+}
+
 function Stat({ label, value, subtle = false }: { label: string; value: string; subtle?: boolean }) {
     return (
         <div>
@@ -619,76 +658,96 @@ function AddExpenseSheet({ onClose }: { onClose: () => void }) {
         { id: "other", icon: "📦", label: "Other" },
     ];
 
+    // Fix: the sheet must (a) stop short of the bottom nav so the button
+    //  isn't covered, (b) be scrollable internally on small viewports, and
+    //  (c) account for the iPhone safe-area inset.
     return (
         <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 flex items-end fade-in"
+            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-end justify-center fade-in"
             onClick={onClose}
+            role="dialog"
+            aria-modal="true"
         >
             <div
-                className="surface-elev rounded-t-3xl w-full max-w-xl mx-auto p-6 space-y-4 slide-up"
+                className="surface-elev w-full max-w-xl rounded-t-3xl slide-up flex flex-col"
+                style={{
+                    // 100dvh handles the iOS viewport correctly. Cap at 90% so the
+                    // backdrop is still visible above.
+                    maxHeight: "min(90dvh, 720px)",
+                    // Leave room for the bottom-nav. 64px nav + 16px breathing space.
+                    paddingBottom: "max(env(safe-area-inset-bottom), 0px)",
+                }}
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between">
+                {/* sticky header */}
+                <div className="flex items-center justify-between p-5 border-b border-white/5 shrink-0">
                     <p className="text-lg font-semibold text-white">Add expense</p>
                     <button
                         onClick={onClose}
-                        className="text-zinc-500 hover:text-white text-xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5"
+                        className="text-zinc-400 hover:text-white text-xl leading-none w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors"
+                        aria-label="Close"
                     >
                         ×
                     </button>
                 </div>
 
-                <div>
-                    <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Amount</label>
-                    <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-lg">₹</span>
+                {/* scrollable body */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Amount</label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-lg">₹</span>
+                            <Input
+                                type="number"
+                                inputMode="decimal"
+                                placeholder="0"
+                                value={amount}
+                                onChange={e => setAmount(e.target.value)}
+                                className="!pl-8 !text-2xl !font-semibold !tabular-nums"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Merchant</label>
                         <Input
-                            type="number"
-                            inputMode="decimal"
-                            placeholder="0"
-                            value={amount}
-                            onChange={e => setAmount(e.target.value)}
-                            className="!pl-8 !text-2xl !font-semibold !tabular-nums"
-                            autoFocus
+                            type="text"
+                            placeholder="Where did you spend?"
+                            value={merchant}
+                            onChange={e => setMerchant(e.target.value)}
                         />
                     </div>
-                </div>
 
-                <div>
-                    <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Merchant</label>
-                    <Input
-                        type="text"
-                        placeholder="Where did you spend?"
-                        value={merchant}
-                        onChange={e => setMerchant(e.target.value)}
-                    />
-                </div>
-
-                <div>
-                    <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Category</label>
-                    <div className="grid grid-cols-5 gap-2">
-                        {CATEGORIES.map(c => (
-                            <button
-                                key={c.id}
-                                onClick={() => setCategory(c.id)}
-                                className={`p-2 rounded-xl border text-center transition-all active:scale-95 ${category === c.id
-                                    ? "border-blue-500/60 bg-blue-500/10"
-                                    : "border-white/10 bg-black/20 hover:border-white/20"}`}
-                            >
-                                <div className="text-xl">{c.icon}</div>
-                                <div className="text-[10px] text-zinc-400 mt-0.5 truncate">{c.label}</div>
-                            </button>
-                        ))}
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Category</label>
+                        <div className="grid grid-cols-5 gap-2">
+                            {CATEGORIES.map(c => (
+                                <button
+                                    key={c.id}
+                                    onClick={() => setCategory(c.id)}
+                                    className={`p-2 rounded-xl border text-center transition-all active:scale-95 ${category === c.id
+                                        ? "border-blue-500/60 bg-blue-500/10"
+                                        : "border-white/10 bg-black/20 hover:border-white/20"}`}
+                                >
+                                    <div className="text-xl">{c.icon}</div>
+                                    <div className="text-[10px] text-zinc-400 mt-0.5 truncate">{c.label}</div>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
-                <button
-                    onClick={() => log.mutate({ amount: Number(amount), merchant, category, source: "manual" })}
-                    disabled={!amount || log.isPending}
-                    className="btn-primary w-full !py-4 !text-base"
-                >
-                    {log.isPending ? "Logging…" : `Log ₹${amount || "0"}`}
-                </button>
+                {/* sticky footer with the submit button — always visible */}
+                <div className="px-5 py-4 border-t border-white/5 bg-black/30 shrink-0">
+                    <button
+                        onClick={() => log.mutate({ amount: Number(amount), merchant, category, source: "manual" })}
+                        disabled={!amount || log.isPending}
+                        className="btn-primary w-full !py-3.5 !text-base"
+                    >
+                        {log.isPending ? "Logging…" : `Log ₹${amount || "0"}`}
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -808,66 +867,321 @@ function DebtsTab() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  HISTORY TAB
+//  OVERVIEW TAB
+//  Not just "today" — the full picture: cycle progress, spending mix,
+//  debt status, top merchants, net wealth. This is your at-a-glance
+//  "how am I doing?" view.
 // ════════════════════════════════════════════════════════════════════
-function HistoryTab() {
-    const [months, setMonths] = useState(6);
-    const { data, isLoading } = useQuery({
-        queryKey: ["history", months],
-        queryFn: () => apiFetch(`/api/history?months=${months}`),
-    });
-
-    if (isLoading) return <Loading />;
-
-    const ms = (data?.months ?? []) as Array<{ label: string; spent: number; debtPaid: number; isCurrent: boolean }>;
-    const maxVal = Math.max(...ms.map(m => m.spent + m.debtPaid), 1);
+function OverviewTab({ data }: { data: StateData }) {
+    const { profile, smartAllowance: smart, debts, ious, overview, envelopes, expenses } = data;
+    const total = overview.cycleSpendByCategory.reduce((s, c) => s + c.amount, 0);
 
     return (
-        <div className="space-y-4 pb-24 fade-in">
-            <div className="flex gap-2 overflow-x-auto">
-                {[3, 6, 12, 24].map(m => (
-                    <button
-                        key={m}
-                        onClick={() => setMonths(m)}
-                        className={`text-xs px-3 py-1.5 rounded-full transition-all shrink-0 ${months === m
-                            ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
-                            : "bg-white/5 text-zinc-400 border border-white/10 hover:bg-white/10"}`}
-                    >
-                        Last {m}mo
-                    </button>
-                ))}
+        <div className="space-y-3 pb-32 fade-in">
+            {/* ── Health header ─────────────────────────────────── */}
+            <Surface elevated className="overflow-hidden relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/15 via-blue-500/3 to-transparent pointer-events-none" />
+                <div className="relative p-5">
+                    <p className="text-[11px] text-zinc-400 uppercase tracking-widest mb-2">Financial overview</p>
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div>
+                            <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Monthly income</p>
+                            <Money value={profile.income} large />
+                        </div>
+                        <div>
+                            <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Outstanding debt</p>
+                            <p className="text-2xl font-bold text-red-400 tabular-nums">{fmtL(debts.totalOutstanding)}</p>
+                        </div>
+                    </div>
+
+                    {/* Cycle pace bar */}
+                    <div className="pt-3 border-t border-white/5">
+                        <div className="flex items-center justify-between text-xs mb-1.5">
+                            <span className="text-zinc-400">Cycle pace</span>
+                            <span className="text-zinc-300 tabular-nums">
+                                Day {smart.cycle.dayOfCycle}/{smart.cycle.daysInCycle} · {smart.cycle.pctFlexGone}% flex spent
+                            </span>
+                        </div>
+                        <div className="relative">
+                            <ProgressBar pct={smart.cycle.pctFlexGone} />
+                            <div className="absolute top-0 h-1.5 w-px bg-white/30" style={{ left: `${smart.cycle.pctCycleGone}%` }} />
+                        </div>
+                        <p className="text-[11px] text-zinc-500 mt-2">{smart.rationale}</p>
+                    </div>
+                </div>
+            </Surface>
+
+            {/* ── Three big totals ────────────────────────────── */}
+            <div className="grid grid-cols-3 gap-2">
+                <QuickStat icon="💸" label="Spent (cycle)" value={fmt(total)} color="text-white" />
+                <QuickStat icon="✅" label="Debt paid" value={fmt(debts.monthPaid)} color="text-emerald-400" />
+                <QuickStat icon="📥" label="Owed to you" value={fmt(ious.totalOpen)} color="text-blue-400" />
             </div>
 
-            {ms.length === 0
-                ? <EmptyState icon="📊" title="No history yet" hint="Log expenses and they'll show up here over time." />
-                : (
-                    <div className="space-y-2">
-                        {[...ms].reverse().map(m => {
-                            const total = m.spent + m.debtPaid;
-                            const pct = (total / maxVal) * 100;
-                            const spentPct = total > 0 ? (m.spent / total) * pct : 0;
-                            const paidPct = total > 0 ? (m.debtPaid / total) * pct : 0;
+            {/* ── Cycle spend by category ─────────────────────── */}
+            <Collapsible
+                title="Where this cycle's money went"
+                icon="📊"
+                subtitle={`${overview.cycleSpendByCategory.length} categories · ${fmt(total)} total`}
+                defaultOpen
+            >
+                {overview.cycleSpendByCategory.length === 0 ? (
+                    <EmptyState icon="🌱" title="Cycle just started" hint="As you spend, the mix will appear here." />
+                ) : (
+                    <div className="space-y-2 pt-2">
+                        {overview.cycleSpendByCategory.map(c => {
+                            const pct = total > 0 ? (c.amount / total) * 100 : 0;
                             return (
-                                <Surface key={m.label} className={`p-4 ${m.isCurrent ? "!border-yellow-500/30" : ""}`}>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className={`text-sm font-medium ${m.isCurrent ? "text-yellow-400" : "text-zinc-200"}`}>
-                                            {m.label}{m.isCurrent ? " · this month" : ""}
-                                        </span>
-                                        <span className="text-sm text-white tabular-nums">{fmt(total)}</span>
+                                <div key={c.category} className="flex items-center gap-3">
+                                    <span className="text-base">{c.icon}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-xs text-zinc-300 truncate">{c.label}</span>
+                                            <span className="text-xs text-white tabular-nums shrink-0">{fmt(c.amount)}</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                            <div className="h-full bg-blue-500/60" style={{ width: `${pct}%` }} />
+                                        </div>
                                     </div>
-                                    <div className="flex h-2 rounded-full bg-white/5 overflow-hidden">
-                                        <div className="bg-blue-500/70" style={{ width: `${spentPct}%` }} />
-                                        <div className="bg-emerald-500/70" style={{ width: `${paidPct}%` }} />
-                                    </div>
-                                    <div className="flex justify-between text-[11px] text-zinc-500 mt-1.5">
-                                        <span>💸 Spent {fmt(m.spent)}</span>
-                                        <span>✅ Paid {fmt(m.debtPaid)}</span>
-                                    </div>
-                                </Surface>
+                                    <span className="text-[10px] text-zinc-500 tabular-nums w-9 text-right shrink-0">{Math.round(pct)}%</span>
+                                </div>
                             );
                         })}
                     </div>
                 )}
+            </Collapsible>
+
+            {/* ── Top merchants ──────────────────────────────── */}
+            <Collapsible
+                title="Top merchants this cycle"
+                icon="🏪"
+                subtitle={`${overview.topMerchants.length} merchants`}
+            >
+                {overview.topMerchants.length === 0 ? (
+                    <EmptyState icon="🛒" title="No merchant data yet" hint="As your SMS/manual entries come in, they'll rank here." />
+                ) : (
+                    <div className="divide-y divide-white/5">
+                        {overview.topMerchants.map((m, i) => (
+                            <div key={m.merchant} className="flex items-center justify-between py-2.5">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[10px] text-zinc-600 tabular-nums w-5">#{i + 1}</span>
+                                    <span className="text-sm text-zinc-200 truncate">{m.merchant}</span>
+                                </div>
+                                <span className="text-sm text-white tabular-nums shrink-0">{fmt(m.amount)}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </Collapsible>
+
+            {/* ── Debt breakdown ─────────────────────────────── */}
+            <Collapsible
+                title="Debt breakdown"
+                icon="⚔️"
+                subtitle={`${debts.list.filter(d => d.balance > 0).length} active · ${fmtL(debts.totalOutstanding)} outstanding`}
+            >
+                <div className="space-y-2 pt-2">
+                    {(["cc", "formal", "friend"] as const).map(type => {
+                        const amount = debts.byType[type];
+                        if (!amount) return null;
+                        const label = type === "cc" ? "💳 Credit cards" : type === "formal" ? "🏦 Loans" : "🤝 Friends";
+                        const pct = debts.totalOutstanding > 0 ? (amount / debts.totalOutstanding) * 100 : 0;
+                        return (
+                            <div key={type} className="flex items-center gap-3">
+                                <span className="text-xs text-zinc-300 w-32 truncate">{label}</span>
+                                <div className="flex-1">
+                                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                        <div className="h-full bg-red-500/60" style={{ width: `${pct}%` }} />
+                                    </div>
+                                </div>
+                                <span className="text-xs text-white tabular-nums w-16 text-right">{fmt(amount)}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </Collapsible>
+
+            {/* ── Envelopes status ───────────────────────────── */}
+            <Collapsible
+                title="Envelopes"
+                icon="📦"
+                subtitle={`${envelopes.length} envelopes · ${fmt(envelopes.reduce((s, e) => s + e.amount, 0))} total budget`}
+            >
+                <div className="space-y-2 pt-2">
+                    {envelopes.map(e => (
+                        <div key={e.id} className="flex items-center justify-between py-1.5">
+                            <div className="flex items-center gap-2">
+                                <span className="text-base">{e.icon}</span>
+                                <span className="text-sm text-zinc-300">{e.label}</span>
+                                {e.locked && <Pill color="zinc">locked</Pill>}
+                            </div>
+                            <span className="text-sm text-white tabular-nums">{fmt(e.amount)}</span>
+                        </div>
+                    ))}
+                </div>
+            </Collapsible>
+
+            {/* ── Helpful explainer ──────────────────────────── */}
+            <Surface className="p-4 bg-gradient-to-br from-blue-500/5 to-transparent">
+                <p className="text-[11px] uppercase tracking-wider text-blue-300 font-medium mb-1.5">How "spend today" is calculated</p>
+                <p className="text-[12px] text-zinc-400 leading-relaxed">
+                    We start from your flex budget (Food + Freedom envelopes), divide what's left by the days remaining in your salary cycle,
+                    then adjust based on your pace so far. If you're burning fast we trim today's limit; if you're under-spending we relax it.
+                    Bills, debt EMIs and SIPs are deducted separately so they never eat into your daily allowance.
+                </p>
+            </Surface>
+
+            {/* small breathing room */}
+            <div className="h-4" />
+            <p className="text-center text-[10px] text-zinc-600">
+                Most recent expense: {expenses.recent[0]
+                    ? `${fmt(expenses.recent[0].amount)} at ${expenses.recent[0].merchant || "unknown"}`
+                    : "none yet"}
+            </p>
+        </div>
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  HISTORY TAB
+//  Searchable, filterable log of EVERY expense ever, grouped by day.
+// ════════════════════════════════════════════════════════════════════
+function HistoryTab() {
+    const [query, setQuery] = useState("");
+    const [category, setCategory] = useState<string>("");
+    const [range, setRange] = useState<"7d" | "30d" | "90d" | "all">("30d");
+
+    const now = Date.now();
+    const fromMs = range === "all" ? null
+        : range === "7d"  ? now - 7  * 86_400_000
+        : range === "30d" ? now - 30 * 86_400_000
+        : range === "90d" ? now - 90 * 86_400_000
+        : null;
+
+    const params = new URLSearchParams({ groupBy: "day", limit: "200" });
+    if (fromMs)   params.set("from", String(fromMs));
+    if (category) params.set("category", category);
+    if (query)    params.set("merchant", query);
+
+    const { data, isLoading, refetch, isFetching } = useQuery({
+        queryKey: ["history-list", range, category, query],
+        queryFn: () => apiFetch(`/api/expenses/list?${params.toString()}`),
+    });
+
+    if (isLoading) return <Loading />;
+
+    const days: Array<{ date: string; total: number; count: number; items: Array<Expense & { categoryMeta: { label: string; icon: string } }> }> = data?.days ?? [];
+    const grandTotal = days.reduce((s, d) => s + d.total, 0);
+    const grandCount = days.reduce((s, d) => s + d.count, 0);
+
+    const CATS = [
+        { id: "",              label: "All" },
+        { id: "food",          label: "🍱 Food" },
+        { id: "freedom",       label: "🎯 Lifestyle" },
+        { id: "commute",       label: "🚇 Commute" },
+        { id: "subscriptions", label: "📺 Subs" },
+        { id: "family",        label: "📱 Family" },
+        { id: "rent",          label: "🏠 Rent" },
+        { id: "maintenance",   label: "⚡ Bills" },
+        { id: "debt",          label: "💳 Debt" },
+        { id: "sip",           label: "📈 SIP" },
+        { id: "other",         label: "📦 Other" },
+    ];
+
+    return (
+        <div className="space-y-3 pb-28 fade-in">
+            {/* Filters */}
+            <Surface className="p-3 space-y-2">
+                <Input
+                    type="search"
+                    placeholder="Search by merchant…"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                />
+                <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1">
+                    {(["7d", "30d", "90d", "all"] as const).map(r => (
+                        <button
+                            key={r}
+                            onClick={() => setRange(r)}
+                            className={`text-[11px] px-2.5 py-1 rounded-full transition-all shrink-0 ${range === r
+                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                                : "bg-white/5 text-zinc-400 border border-white/10 hover:bg-white/10"}`}
+                        >
+                            {r === "7d" ? "Last 7 days" : r === "30d" ? "Last 30 days" : r === "90d" ? "Last 90 days" : "All time"}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
+                    {CATS.map(c => (
+                        <button
+                            key={c.id}
+                            onClick={() => setCategory(c.id)}
+                            className={`text-[11px] px-2.5 py-1 rounded-full transition-all shrink-0 whitespace-nowrap ${category === c.id
+                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                                : "bg-white/5 text-zinc-500 border border-white/10 hover:bg-white/10"}`}
+                        >
+                            {c.label}
+                        </button>
+                    ))}
+                </div>
+            </Surface>
+
+            {/* Summary strip */}
+            <div className="flex items-center justify-between px-1 text-[11px] text-zinc-500">
+                <span>
+                    {grandCount} expense{grandCount === 1 ? "" : "s"} · {days.length} day{days.length === 1 ? "" : "s"}
+                </span>
+                <span className="tabular-nums">Total: <strong className="text-white">{fmt(grandTotal)}</strong></span>
+                <button
+                    onClick={() => refetch()}
+                    className="text-zinc-400 hover:text-white"
+                    aria-label="Refresh"
+                >
+                    {isFetching ? "⟳" : "↻"}
+                </button>
+            </div>
+
+            {/* Day groups */}
+            {days.length === 0 ? (
+                <EmptyState
+                    icon="📜"
+                    title="Nothing here yet"
+                    hint={query || category ? "Try clearing filters." : "Log your first expense to start the log."}
+                />
+            ) : (
+                days.map(d => {
+                    const date = new Date(d.date + "T00:00:00");
+                    const label = date.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+                    return (
+                        <Surface key={d.date} className="overflow-hidden">
+                            <div className="flex items-center justify-between px-4 py-2.5 bg-white/[0.02] border-b border-white/5">
+                                <span className="text-xs font-medium text-zinc-300">{label}</span>
+                                <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+                                    <span>{d.count} {d.count === 1 ? "entry" : "entries"}</span>
+                                    <span className="tabular-nums text-white font-medium">{fmt(d.total)}</span>
+                                </div>
+                            </div>
+                            <div className="divide-y divide-white/5">
+                                {d.items.map(e => (
+                                    <div key={e.id} className="flex items-center justify-between px-4 py-2.5">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <span className="text-base">{e.categoryMeta.icon}</span>
+                                            <div className="min-w-0">
+                                                <p className="text-sm text-zinc-200 truncate">{e.merchant || "Unknown"}</p>
+                                                <p className="text-[10.5px] text-zinc-500">
+                                                    {e.categoryMeta.label} · {new Date(e.ts).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+                                                    {e.source && e.source !== "manual" && <span> · {e.source}</span>}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className="text-sm font-medium tabular-nums text-white shrink-0">{fmt(e.amount)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </Surface>
+                    );
+                })
+            )}
         </div>
     );
 }
@@ -888,11 +1202,12 @@ function AdvisorTab() {
 //  ROOT
 // ════════════════════════════════════════════════════════════════════
 const TABS = [
-    { id: "today", label: "Today", icon: "🏠" },
-    { id: "debts", label: "Debts", icon: "⚔️" },
-    { id: "history", label: "History", icon: "📊" },
-    { id: "advisor", label: "AI", icon: "🧠" },
-    { id: "config", label: "Config", icon: "⚙️" },
+    { id: "today",    label: "Today",    icon: "🏠" },
+    { id: "overview", label: "Overview", icon: "📊" },
+    { id: "history",  label: "History",  icon: "📜" },
+    { id: "debts",    label: "Debts",    icon: "⚔️" },
+    { id: "advisor",  label: "AI",       icon: "🧠" },
+    { id: "config",   label: "Config",   icon: "⚙️" },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -914,7 +1229,7 @@ export default function Home() {
         <div className="min-h-screen relative">
             {/* Top bar */}
             <header className="sticky top-0 z-20 backdrop-blur-xl bg-black/60 border-b border-white/5">
-                <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
+                <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
                             <span className="text-base">💎</span>
@@ -925,46 +1240,57 @@ export default function Home() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {session?.user?.image ? (
-                            <img
-                                src={session.user.image}
-                                alt={session.user.name ?? ""}
-                                className="w-8 h-8 rounded-full border border-white/20"
-                            />
-                        ) : (
-                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm font-medium text-zinc-300">
-                                {session?.user?.name?.charAt(0)?.toUpperCase() ?? "?"}
-                            </div>
-                        )}
+                        {/* User chip — shows name on sm+, avatar on xs */}
+                        <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/5 border border-white/10">
+                            {session?.user?.image ? (
+                                <img
+                                    src={session.user.image}
+                                    alt={session.user.name ?? ""}
+                                    className="w-7 h-7 rounded-full border border-white/20"
+                                />
+                            ) : (
+                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-semibold text-white">
+                                    {session?.user?.name?.charAt(0)?.toUpperCase() ?? "?"}
+                                </div>
+                            )}
+                            <span className="hidden sm:inline text-xs font-medium text-zinc-300 max-w-[120px] truncate">
+                                {session?.user?.name ?? session?.user?.email ?? "Signed in"}
+                            </span>
+                        </div>
                         <button
                             onClick={() => signOut({ callbackUrl: "/login" })}
-                            className="text-xs text-zinc-500 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
+                            className="text-xs font-medium text-zinc-300 hover:text-white transition-colors px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center gap-1.5"
                             title="Sign out"
                         >
-                            ↩
+                            <span aria-hidden>↩</span>
+                            <span>Sign out</span>
                         </button>
                     </div>
                 </div>
             </header>
 
             {/* Content */}
-            <main className="max-w-xl mx-auto px-4 pt-4 relative z-10">
+            <main className="max-w-3xl mx-auto px-4 pt-4 relative z-10">
                 {isLoading && <Loading label="Loading your finances…" />}
                 {!isLoading && !dbReady && <DBNotReady />}
                 {!isLoading && dbReady && stateData && (
                     <>
-                        {tab === "today" && <TodayTab data={stateData} />}
-                        {tab === "debts" && <DebtsTab />}
-                        {tab === "history" && <HistoryTab />}
-                        {tab === "advisor" && <AdvisorTab />}
-                        {tab === "config" && <ConfigTab data={stateData} />}
+                        {tab === "today"    && <TodayTab data={stateData} />}
+                        {tab === "overview" && <OverviewTab data={stateData} />}
+                        {tab === "history"  && <HistoryTab />}
+                        {tab === "debts"    && <DebtsTab />}
+                        {tab === "advisor"  && <AdvisorTab />}
+                        {tab === "config"   && <ConfigTab data={stateData} />}
                     </>
                 )}
             </main>
 
             {/* Bottom nav */}
-            <nav className="fixed bottom-0 left-0 right-0 z-20 backdrop-blur-xl bg-black/70 border-t border-white/5">
-                <div className="max-w-xl mx-auto px-2 py-1.5 flex">
+            <nav
+                className="fixed bottom-0 left-0 right-0 z-20 backdrop-blur-xl bg-black/70 border-t border-white/5"
+                style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
+            >
+                <div className="max-w-3xl mx-auto px-2 py-1.5 flex">
                     {TABS.map(t => {
                         const active = tab === t.id;
                         return (

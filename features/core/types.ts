@@ -63,6 +63,8 @@ export interface ActionContext {
   settings: Record<string, unknown>;
   /** Whether the caller is same-origin browser (for read endpoints) */
   sameOrigin: boolean;
+  /** Authenticated user id, if any. Undefined for unauthenticated callers. */
+  userId?: string;
 }
 
 /** Map of "METHOD /path" → handler. Method defaults to POST if omitted. */

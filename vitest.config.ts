@@ -11,6 +11,9 @@ export default defineConfig({
     resolve: {
         alias: {
             "@": resolve(__dirname, "."),
+            // next-auth imports "next/server" (without .js) which fails outside Next.js build
+            "next/server": resolve(__dirname, "node_modules/next/dist/server/web/exports/index.js"),
+            "next/headers": resolve(__dirname, "node_modules/next/dist/client/components/headers.js"),
         },
     },
 });
