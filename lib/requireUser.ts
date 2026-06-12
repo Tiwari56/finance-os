@@ -2,7 +2,11 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
-export async function requireUser() {
+type RequireUserResult =
+    | { userId: string; error: null }
+    | { userId: null; error: NextResponse };
+
+export async function requireUser(): Promise<RequireUserResult> {
     const session = await auth();
     if (!session?.user?.id) {
         return { userId: null, error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };

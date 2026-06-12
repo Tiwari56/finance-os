@@ -19,15 +19,15 @@ export async function GET() {
                 health = { ok: false, info: (err as Error).message };
             }
             return {
-                id:           f.id,
-                name:         f.name,
-                description:  f.description,
-                category:     f.category,
-                icon:         f.icon,
-                version:      f.version,
+                id: f.id,
+                name: f.name,
+                description: f.description,
+                category: f.category,
+                icon: f.icon,
+                version: f.version,
                 dependencies: f.dependencies ?? [],
-                routes:       Object.keys(f.routes ?? {}),
-                settings:     f.settings ?? [],
+                routes: Object.keys(f.routes ?? {}),
+                settings: f.settings ?? [],
                 health,
             };
         })

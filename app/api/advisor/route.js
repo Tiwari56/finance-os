@@ -10,6 +10,7 @@
 
 import { NextResponse } from "next/server";
 import { getState } from "../../../lib/store";
+import { auth } from "../../../auth";
 import {
   avalanche, dailyAllowance, wholeMoneyView, billsStatus, recommendations,
   getProfile, getEnvelopes, getGoals, getDailyFlexBudget,
@@ -125,7 +126,8 @@ export async function POST(req) {
     return NextResponse.json({ error: "question required (or pass mode: 'analyze')" }, { status: 400 });
   }
 
-  const state = await getState();
+  const session = await auth();
+  const state = await getState(session?.user?.id ?? null);
   const now = new Date();
   const snap = buildSnapshot(state, now);
   const systemPrompt = buildSystemPrompt(state, snap, now);

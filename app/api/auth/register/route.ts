@@ -5,6 +5,7 @@ import { db } from "@/features/core/db/client";
 import { users } from "@/features/core/db/schema";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { seedNewUser } from "@/features/core/lib/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     const id = randomUUID();
 
     await db.insert(users).values({ id, name, email, passwordHash });
+    await seedNewUser(id, name);
 
     return NextResponse.json({ ok: true });
 }

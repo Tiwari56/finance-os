@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server";
 import { getState, patchState } from "../../../lib/store";
+import { auth } from "../../../auth";
 import {
   avalanche, dailyAllowance, coachVerdict, nextAction,
   wholeMoneyView, billsStatus, recommendations,
@@ -151,7 +152,8 @@ function ensureConfig(s) {
 }
 
 export async function GET() {
-  const state = await getState();
+  const session = await auth();
+  const state = await getState(session?.user?.id ?? null);
   return NextResponse.json({ state, computed: computeDaily(state) });
 }
 

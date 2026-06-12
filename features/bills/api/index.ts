@@ -1,11 +1,11 @@
 // ════════════════════════════════════════════════════════════════
-//  bills/api/index.ts
+//  bills/api/index.ts — all handlers scoped to the session user.
 // ════════════════════════════════════════════════════════════════
 
 import { z } from "zod";
 import { db } from "@/features/core/db/client";
 import { bills, billPayments } from "../schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc, getTableColumns } from "drizzle-orm";
 import { requireUser } from "@/lib/requireUser";
 
 function monthKey(d: Date = new Date()) {
@@ -14,10 +14,18 @@ function monthKey(d: Date = new Date()) {
 
 // ─── Status ───────────────────────────────────────────────────────
 export async function getBillsStatus(_req: Request): Promise<Response> {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     const now = new Date();
     const mk = monthKey(now);
-    const allBills = await db.select().from(bills).where(eq(bills.active, true)).orderBy(bills.order);
-    const payments = await db.select().from(billPayments).where(eq(billPayments.month, mk));
+    const allBills = await db.select().from(bills)
+        .where(and(eq(bills.userId, userId), eq(bills.active, true)))
+        .orderBy(bills.order);
+    const payments = await db.select({ ...getTableColumns(billPayments) })
+        .from(billPayments)
+        .innerJoin(bills, eq(billPayments.billId, bills.id))
+        .where(and(eq(bills.userId, userId), eq(billPayments.month, mk)));
 
     const paidMap = new Map(payments.map(p => [p.billId, p]));
     const withStatus = allBills.map(b => {
@@ -52,9 +60,17 @@ export async function upsertBill(req: Request): Promise<Response> {
     if (!parsed.success) return Response.json({ ok: false, error: "Invalid body" }, { status: 400 });
 
     const { id: existingId, ...data } = parsed.data;
-    const id = existingId ?? "bill_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
 
-    await db.insert(bills).values({ id, userId: userId, ...data }).onConflictDoUpdate({ target: bills.id, set: data });
+    if (existingId) {
+        const updated = await db.update(bills).set(data)
+            .where(and(eq(bills.id, existingId), eq(bills.userId, userId)))
+            .returning({ id: bills.id });
+        if (updated.length === 0) return Response.json({ ok: false, error: "Bill not found" }, { status: 404 });
+        return Response.json({ ok: true, id: existingId });
+    }
+
+    const id = "bill_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
+    await db.insert(bills).values({ id, userId, ...data });
     return Response.json({ ok: true, id });
 }
 
@@ -68,12 +84,21 @@ const PayBillBody = z.object({
 });
 
 export async function payBill(req: Request): Promise<Response> {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
     const parsed = PayBillBody.safeParse(body);
     if (!parsed.success) return Response.json({ ok: false, error: "Invalid body" }, { status: 400 });
 
     const { billId, amount, partial, note } = parsed.data;
+
+    const owned = await db.select({ id: bills.id }).from(bills)
+        .where(and(eq(bills.id, billId), eq(bills.userId, userId)))
+        .limit(1);
+    if (owned.length === 0) return Response.json({ ok: false, error: "Bill not found" }, { status: 404 });
+
     const month = parsed.data.month ?? monthKey();
     const id = "bp_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
     const ts = Date.now();
@@ -89,10 +114,18 @@ export async function payBill(req: Request): Promise<Response> {
 const UndoBody = z.object({ billId: z.string(), month: z.string().optional() });
 
 export async function undoBill(req: Request): Promise<Response> {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
     const parsed = UndoBody.safeParse(body);
     if (!parsed.success) return Response.json({ ok: false, error: "billId required" }, { status: 400 });
+
+    const owned = await db.select({ id: bills.id }).from(bills)
+        .where(and(eq(bills.id, parsed.data.billId), eq(bills.userId, userId)))
+        .limit(1);
+    if (owned.length === 0) return Response.json({ ok: false, error: "Bill not found" }, { status: 404 });
 
     const month = parsed.data.month ?? monthKey();
     const payments = await db.select().from(billPayments)
@@ -109,11 +142,15 @@ export async function undoBill(req: Request): Promise<Response> {
 
 // ─── Delete bill ──────────────────────────────────────────────────
 export async function deleteBill(req: Request): Promise<Response> {
+    const { userId, error } = await requireUser();
+    if (error) return error;
+
     let body: unknown;
     try { body = await req.json(); } catch { body = {}; }
     const parsed = z.object({ id: z.string() }).safeParse(body);
     if (!parsed.success) return Response.json({ ok: false, error: "id required" }, { status: 400 });
 
-    await db.update(bills).set({ active: false }).where(eq(bills.id, parsed.data.id));
+    await db.update(bills).set({ active: false })
+        .where(and(eq(bills.id, parsed.data.id), eq(bills.userId, userId)));
     return Response.json({ ok: true });
 }

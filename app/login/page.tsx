@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { LogoMark } from "@/lib/ui/icons";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -44,17 +45,17 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-            <div className="w-full max-w-sm">
+        <div className="min-h-screen flex items-center justify-center p-4 relative z-10">
+            <div className="w-full max-w-sm slide-up">
                 {/* Logo */}
-                <div className="text-center mb-8">
-                    <div className="text-4xl mb-2">💰</div>
-                    <h1 className="text-xl font-bold text-white">Finance OS</h1>
-                    <p className="text-sm text-zinc-500 mt-1">Your personal finance command center</p>
+                <div className="flex flex-col items-center text-center mb-8">
+                    <div className="mb-4"><LogoMark size={56} /></div>
+                    <h1 className="text-2xl font-semibold text-white tracking-tight">Finance OS</h1>
+                    <p className="text-sm text-zinc-500 mt-1.5">Track your money. Crush your debt.</p>
                 </div>
 
                 {/* Card */}
-                <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 shadow-xl">
+                <div className="surface-elev p-6">
                     {/* Tabs */}
                     <div className="flex rounded-xl bg-black/30 p-1 mb-6">
                         {(["login", "register"] as const).map((m) => (
@@ -107,7 +108,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl text-sm transition-all"
+                            className="btn-primary w-full !py-3"
                         >
                             {loading ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
                         </button>

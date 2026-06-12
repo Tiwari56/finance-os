@@ -23,7 +23,8 @@ import { goals } from "@/features/goals/schema";
 import { profile, flags } from "@/features/core/db/schema";
 import { dailyAllowance, smartAllowance } from "@/features/allowance/lib/math";
 import { CATEGORIES, isFlexCategory, type CategoryKey } from "@/features/expenses/lib/categorize";
-import { gte, eq, desc, and } from "drizzle-orm";
+import { envelopeKeyOf, isFlexEnvelope } from "@/features/envelopes/lib/keys";
+import { gte, eq, desc, and, getTableColumns } from "drizzle-orm";
 import { requireUser } from "@/lib/requireUser";
 
 export const dynamic = "force-dynamic";
@@ -66,8 +67,14 @@ export async function GET() {
             db.select().from(expenses).where(eq(expenses.userId, userId as string)).orderBy(desc(expenses.ts)).limit(50),
             db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, monthStart))),
             db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, dayStart))),
-            db.select().from(billPayments).where(eq(billPayments.month, monthKey)),
-            db.select().from(debtPayments).where(gte(debtPayments.ts, monthStart)),
+            db.select({ ...getTableColumns(billPayments) })
+                .from(billPayments)
+                .innerJoin(bills, eq(billPayments.billId, bills.id))
+                .where(and(eq(bills.userId, userId as string), eq(billPayments.month, monthKey))),
+            db.select({ ...getTableColumns(debtPayments) })
+                .from(debtPayments)
+                .innerJoin(debts, eq(debtPayments.debtId, debts.id))
+                .where(and(eq(debts.userId, userId as string), gte(debtPayments.ts, monthStart))),
             db.select().from(ious).where(eq(ious.userId, userId as string)).orderBy(ious.ts),
         ]);
 
@@ -85,7 +92,7 @@ export async function GET() {
 
         // ─── Budgets + spend ──────────────────────────────────────
         const flexBudget = allEnvelopes
-            .filter(e => e.id === "food" || e.id === "freedom")
+            .filter(e => isFlexEnvelope(e.id))
             .reduce((s, e) => s + Number(e.amount), 0) || 30_000;
 
         const flexCatSet = new Set<string>(FLEX_CATEGORIES);
@@ -182,7 +189,7 @@ export async function GET() {
             ok: true,
             profile: userProfile,
             flags: userFlags,
-            envelopes: allEnvelopes,
+            envelopes: allEnvelopes.map(e => ({ ...e, key: envelopeKeyOf(e.id) })),
             allowance: {
                 ...legacy,
                 todaySpent: todayFlexSpent,

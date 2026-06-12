@@ -6,9 +6,11 @@ import { useSession, signOut } from "next-auth/react";
 import { fmt, fmtL } from "@/lib/format";
 import {
     Surface, Pill, Money, ProgressBar, Collapsible, Input,
-    Loading, EmptyState, apiFetch, apiPost, startOfDay,
+    Loading, EmptyState, DashboardSkeleton, useToast, apiFetch, apiPost, startOfDay,
+    Icon, LogoMark,
     type StateData, type Bill, type Debt, type Expense, type Envelope,
 } from "@/lib/ui";
+import { avalanche } from "@/features/debts/lib/avalanche";
 import { AIInsight, AIQuestion } from "@/features/advisor/components/AIInsight";
 import { ConfigTab } from "@/features/config/components/ConfigTab";
 
@@ -47,12 +49,18 @@ function salaryCycle(profile: StateData["profile"], allowance: StateData["allowa
 // ════════════════════════════════════════════════════════════════════
 function TodayTab({ data }: { data: StateData }) {
     const qc = useQueryClient();
+    const toast = useToast();
     const [showAddExpense, setShowAddExpense] = useState(false);
     const [payingBillId, setPayingBillId] = useState<string | null>(null);
 
     const payBill = useMutation({
         mutationFn: (body: unknown) => apiPost("/api/bills/pay", body),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ["state"] }),
+        onSuccess: (res: { ok?: boolean; error?: string }) => {
+            qc.invalidateQueries({ queryKey: ["state"] });
+            if (res?.ok) toast("Bill marked paid ✓");
+            else toast(res?.error ?? "Could not pay bill", "error");
+        },
+        onError: () => toast("Could not pay bill", "error"),
     });
 
     const { allowance, bills, expenses, debts, ious, goals, envelopes, profile, smartAllowance: smart } = data;
@@ -66,7 +74,7 @@ function TodayTab({ data }: { data: StateData }) {
     const envelopeSpent = computeEnvelopeSpent(envelopes, expenses.recent, cycle.lastSalary.getTime());
 
     return (
-        <div className="space-y-3 pb-32 fade-in">
+        <div className="space-y-3 pb-32 stagger-in">
 
             {/* ── Salary cycle hero ───────────────────────────────── */}
             <SalaryCycleHero cycle={cycle} allowance={allowance} profile={profile} billsRemaining={billsRemaining} smart={smart} />
@@ -75,9 +83,11 @@ function TodayTab({ data }: { data: StateData }) {
             {cycle.isSalaryDay && (
                 <Surface elevated className="p-4 !border-emerald-500/30 bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent">
                     <div className="flex items-center gap-3">
-                        <span className="text-2xl">💎</span>
+                        <span className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-300 shrink-0">
+                            <Icon name="banknote" size={20} />
+                        </span>
                         <div className="flex-1">
-                            <p className="text-sm font-semibold text-emerald-300">Salary day!</p>
+                            <p className="text-sm font-semibold text-emerald-300">Salary day</p>
                             <p className="text-[11px] text-emerald-200/70 mt-0.5">
                                 Distribute {fmtL(profile.income)} across envelopes before today's first spend.
                             </p>
@@ -92,9 +102,9 @@ function TodayTab({ data }: { data: StateData }) {
             {/* ── Urgent attention ────────────────────────────────── */}
             {urgent.length > 0 && (
                 <Surface className="p-4 !border-red-500/30 bg-gradient-to-br from-red-500/5 to-transparent">
-                    <div className="flex items-center gap-2 mb-2.5">
-                        <span className="text-base">🔴</span>
-                        <p className="text-sm font-medium text-red-300">
+                    <div className="flex items-center gap-2 mb-2.5 text-red-300">
+                        <Icon name="alert-circle" size={16} strokeWidth={2} />
+                        <p className="text-sm font-medium">
                             {urgent.length} bill{urgent.length > 1 ? "s" : ""} need{urgent.length === 1 ? "s" : ""} action
                         </p>
                     </div>
@@ -132,7 +142,7 @@ function TodayTab({ data }: { data: StateData }) {
             {/* ── Bills ────────────────────────────────────────────── */}
             <Collapsible
                 title="Bills this month"
-                icon="📋"
+                icon={<Icon name="receipt" size={17} />}
                 subtitle={`${paidCount} of ${bills.length} paid${billsRemaining > 0 ? ` · ${fmt(billsRemaining)} remaining` : ""}`}
                 badge={paidCount === bills.length
                     ? <Pill color="green">All clear</Pill>
@@ -153,7 +163,7 @@ function TodayTab({ data }: { data: StateData }) {
             {/* ── Today's log ──────────────────────────────────────── */}
             <Collapsible
                 title="Today's expenses"
-                icon="📝"
+                icon={<Icon name="wallet" size={17} />}
                 subtitle={`${todayExp.length} entries · ${fmt(allowance.todaySpent)}`}
                 defaultOpen
             >
@@ -174,7 +184,7 @@ function TodayTab({ data }: { data: StateData }) {
             {ious.open.length > 0 && (
                 <Collapsible
                     title="Money owed to you"
-                    icon="📥"
+                    icon={<Icon name="inbox" size={17} />}
                     subtitle={`${fmt(ious.totalOpen)} across ${ious.open.length} ${ious.open.length === 1 ? "person" : "people"}`}
                 >
                     <div className="divide-y divide-white/5">
@@ -211,11 +221,14 @@ function TodayTab({ data }: { data: StateData }) {
             {/* ── Floating + button ────────────────────────────────── */}
             <button
                 onClick={() => setShowAddExpense(true)}
-                className="fixed bottom-20 right-4 z-20 w-14 h-14 rounded-full text-white text-2xl font-light shadow-2xl pulse-glow transition-transform active:scale-95"
-                style={{ background: "linear-gradient(135deg, #4d8cff 0%, #2563eb 100%)" }}
+                className="fixed bottom-24 right-4 z-20 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-2xl pulse-glow transition-transform active:scale-95"
+                style={{
+                    background: "linear-gradient(135deg, #7d99ff 0%, #5b7cfa 60%, #8b5cf6 100%)",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                }}
                 aria-label="Add expense"
             >
-                +
+                <Icon name="plus" size={24} strokeWidth={2.2} />
             </button>
 
             {showAddExpense && <AddExpenseSheet onClose={() => setShowAddExpense(false)} />}
@@ -251,18 +264,18 @@ function SalaryCycleHero({
 }) {
     // Map pace verdict → UI accent
     const accentMap: Record<typeof smart.pace.verdict, "good" | "warn" | "bad" | "good"> = {
-        under:     "good",
+        under: "good",
         "on-track": "good",
-        watch:     "warn",
-        over:      "bad",
+        watch: "warn",
+        over: "bad",
     };
     const accent = accentMap[smart.pace.verdict];
 
     const verdictLabel: Record<typeof smart.pace.verdict, string> = {
-        under:     "Under pace",
+        under: "Under pace",
         "on-track": "On track",
-        watch:     "Watch pace",
-        over:      "Burning fast",
+        watch: "Watch pace",
+        over: "Burning fast",
     };
 
     const heroGradient = accent === "bad"
@@ -345,7 +358,7 @@ function EnvelopeStrip({ envelopes, spent }: { envelopes: Envelope[]; spent: Rec
             </div>
             <div className="grid grid-cols-3 gap-2">
                 {envelopes.map(e => {
-                    const used = spent[e.id] ?? 0;
+                    const used = spent[e.key ?? e.id] ?? 0;
                     const remaining = Math.max(0, e.amount - used);
                     const pct = e.amount > 0 ? Math.min(100, (used / e.amount) * 100) : 0;
                     const color = pct > 90 ? "text-red-400" : pct > 70 ? "text-yellow-400" : "text-emerald-400";
@@ -386,7 +399,7 @@ function DebtCommand({
     const sortedByRate = [...active].sort((a, b) => b.rate - a.rate);
     const priority = sortedByRate[0];
 
-    const debtEnv = envelopes.find(e => e.id === "debt");
+    const debtEnv = envelopes.find(e => (e.key ?? e.id) === "debt");
     const debtSpent = debtEnv ? envelopeSpent.debt ?? 0 : 0;
     const debtBudget = debtEnv?.amount ?? 0;
     const debtLeftThisCycle = Math.max(0, debtBudget - debtSpent);
@@ -413,9 +426,9 @@ function DebtCommand({
             <div className="absolute inset-0 bg-gradient-to-br from-red-500/15 via-red-500/3 to-transparent pointer-events-none" />
             <div className="relative p-5">
                 <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                        <span className="text-base">⚔️</span>
-                        <span className="text-[11px] uppercase tracking-widest text-red-300">Debt command</span>
+                    <div className="flex items-center gap-2 text-red-300">
+                        <Icon name="flame" size={15} strokeWidth={2} />
+                        <span className="text-[11px] uppercase tracking-widest">Debt command</span>
                     </div>
                     {monthsToFree !== null && (
                         <Pill color={monthsToFree <= 12 ? "green" : monthsToFree <= 24 ? "yellow" : "red"}>
@@ -440,8 +453,8 @@ function DebtCommand({
                 {priority && priority.rate > 0 && (
                     <div className="rounded-xl bg-black/30 border border-red-500/15 px-3 py-2.5 mb-3">
                         <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] uppercase tracking-wider text-red-300 font-medium">
-                                💀 Avalanche target
+                            <span className="text-[10px] uppercase tracking-wider text-red-300 font-medium inline-flex items-center gap-1.5">
+                                <Icon name="trending-down" size={12} strokeWidth={2.2} /> Avalanche target
                             </span>
                             <span className="text-[10px] text-zinc-500">attack first</span>
                         </div>
@@ -503,21 +516,23 @@ function computeEnvelopeSpent(envelopes: Envelope[], expenses: Expense[], sinceT
         renovation: "freedom",
         other: "freedom",
     };
+    // Keyed by semantic envelope key ("food", "debt", …) — env ids are
+    // namespaced per user, so always go through the key.
     const out: Record<string, number> = {};
-    for (const env of envelopes) out[env.id] = 0;
+    for (const env of envelopes) out[env.key ?? env.id] = 0;
     for (const e of expenses) {
         if (e.ts < sinceTs) continue;
-        const envId = CAT_TO_ENV[e.category] ?? "freedom";
-        out[envId] = (out[envId] ?? 0) + e.amount;
+        const envKey = CAT_TO_ENV[e.category] ?? "freedom";
+        out[envKey] = (out[envKey] ?? 0) + e.amount;
     }
     return out;
 }
 
-function QuickStat({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
+function QuickStat({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
     return (
         <Surface className="p-3">
             <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 uppercase tracking-wider">
-                <span className="text-xs">{icon}</span>
+                {icon}
                 <span className="truncate">{label}</span>
             </div>
             <p className={`text-sm font-semibold tabular-nums mt-1 ${color}`}>{value}</p>
@@ -636,13 +651,20 @@ function PayBillSheet({ bill, onClose, onSubmit }: {
 // ─── Add expense bottom sheet ─────────────────────────────────────
 function AddExpenseSheet({ onClose }: { onClose: () => void }) {
     const qc = useQueryClient();
+    const toast = useToast();
     const [amount, setAmount] = useState("");
     const [merchant, setMerchant] = useState("");
     const [category, setCategory] = useState("food");
 
     const log = useMutation({
         mutationFn: (body: unknown) => apiPost("/api/expenses/log", body),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ["state"] }); onClose(); },
+        onSuccess: (res: { ok?: boolean; message?: string; error?: string }) => {
+            qc.invalidateQueries({ queryKey: ["state"] });
+            if (res?.ok) toast(res.message ?? "Expense logged ✓");
+            else toast(res?.error ?? "Could not log expense", "error");
+            onClose();
+        },
+        onError: () => toast("Could not log expense", "error"),
     });
 
     const CATEGORIES = [
@@ -756,12 +778,19 @@ function AddExpenseSheet({ onClose }: { onClose: () => void }) {
 // ════════════════════════════════════════════════════════════════════
 //  DEBTS TAB
 // ════════════════════════════════════════════════════════════════════
-function DebtsTab() {
+function DebtsTab({ state }: { state: StateData }) {
     const qc = useQueryClient();
+    const toast = useToast();
     const { data, isLoading } = useQuery({ queryKey: ["debts"], queryFn: () => apiFetch("/api/debts/list") });
     const pay = useMutation({
         mutationFn: (body: unknown) => apiPost("/api/debts/pay", body),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ["debts"] }); qc.invalidateQueries({ queryKey: ["state"] }); },
+        onSuccess: (res: { ok?: boolean; error?: string }) => {
+            qc.invalidateQueries({ queryKey: ["debts"] });
+            qc.invalidateQueries({ queryKey: ["state"] });
+            if (res?.ok) toast("⚔️ Debt payment recorded");
+            else toast(res?.error ?? "Could not record payment", "error");
+        },
+        onError: () => toast("Could not record payment", "error"),
     });
     const [amounts, setAmounts] = useState<Record<string, string>>({});
 
@@ -774,13 +803,13 @@ function DebtsTab() {
     const avalancheTarget = sortedByRate[0];
 
     const groups = [
-        { key: "cc", label: "💳 Credit cards", debts: active.filter(d => d.type === "cc") },
-        { key: "formal", label: "🏦 Loans", debts: active.filter(d => d.type === "formal") },
-        { key: "friend", label: "🤝 Friends", debts: active.filter(d => d.type === "friend") },
+        { key: "cc", label: "Credit cards", debts: active.filter(d => d.type === "cc") },
+        { key: "formal", label: "Loans", debts: active.filter(d => d.type === "formal") },
+        { key: "friend", label: "Friends & family", debts: active.filter(d => d.type === "friend") },
     ];
 
     return (
-        <div className="space-y-4 pb-24 fade-in">
+        <div className="space-y-4 pb-24 stagger-in">
             <Surface elevated className="p-5 relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-red-500/15 to-transparent pointer-events-none" />
                 <div className="relative">
@@ -790,11 +819,16 @@ function DebtsTab() {
                 </div>
             </Surface>
 
+            {/* Payoff projection — the "when am I free?" answer */}
+            {active.length > 0 && <PayoffPlan debts={active} envelopes={state.envelopes} />}
+
             {/* Strategy guidance */}
             {avalancheTarget && avalancheTarget.rate > 0 && (
                 <Surface className="p-4 !border-yellow-500/20 bg-gradient-to-br from-yellow-500/5 to-transparent">
                     <div className="flex items-center justify-between mb-2">
-                        <span className="text-[11px] uppercase tracking-widest text-yellow-300">💀 Avalanche strategy</span>
+                        <span className="text-[11px] uppercase tracking-widest text-yellow-300 inline-flex items-center gap-1.5">
+                            <Icon name="trending-down" size={13} strokeWidth={2.2} /> Avalanche strategy
+                        </span>
                         <Pill color="yellow">attack first</Pill>
                     </div>
                     <p className="text-sm text-zinc-200">Hit <strong>{avalancheTarget.name}</strong> ({avalancheTarget.rate}% p.a.) before any other. Every ₹1k cleared here saves the most interest.</p>
@@ -851,7 +885,7 @@ function DebtsTab() {
 
             {settled.length > 0 && (
                 <section>
-                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">✓ Settled</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">Settled</p>
                     <Surface className="divide-y divide-white/5">
                         {settled.map(d => (
                             <div key={d.id} className="flex items-center justify-between px-4 py-2.5">
@@ -867,6 +901,140 @@ function DebtsTab() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  PAYOFF PLAN
+//  Runs the avalanche projection client-side and answers the real
+//  question: "when am I debt-free, and what does paying more buy me?"
+// ════════════════════════════════════════════════════════════════════
+function PayoffPlan({ debts, envelopes }: { debts: Debt[]; envelopes: Envelope[] }) {
+    const totalEmi = debts.reduce((s, d) => s + (d.emi || 0), 0);
+    const debtEnv = envelopes.find(e => (e.key ?? e.id) === "debt");
+    const defaultBudget = Math.max(totalEmi, debtEnv?.amount ?? 0) || Math.round(debts.reduce((s, d) => s + d.balance, 0) / 12);
+    const [budget, setBudget] = useState(defaultBudget);
+
+    const minBudget = Math.max(1000, totalEmi);
+    const maxBudget = Math.max(minBudget * 3, defaultBudget * 2);
+
+    const snapshots = debts.map(d => ({ id: d.id, name: d.name, balance: d.balance, rate: d.rate, emi: d.emi, type: d.type }));
+    const plan = avalanche(snapshots, budget);
+    const baseline = avalanche(snapshots, defaultBudget);
+
+    const startTotal = debts.reduce((s, d) => s + d.balance, 0);
+    const freeDate = new Date();
+    freeDate.setMonth(freeDate.getMonth() + plan.months);
+    const freeDateStr = freeDate.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+    const stuck = plan.months >= 120;  // interest outruns the payment
+
+    // Approximate interest paid: total outflow minus starting principal
+    const interestPaid = Math.max(0, plan.months * budget - startTotal);
+    const monthsSaved = baseline.months - plan.months;
+
+    // Payoff order — month each debt hits zero
+    const payoffEvents = plan.hist.flatMap(h => h.payoffs.map(name => ({ name, month: h.month })));
+
+    // Sparkline of total balance over time
+    const sparkPoints = (() => {
+        const pts = plan.hist.map(h => h.total);
+        if (pts.length < 2) return "";
+        const max = Math.max(...pts, 1);
+        const w = 100, h = 28;
+        return pts
+            .map((v, i) => `${((i / (pts.length - 1)) * w).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`)
+            .join(" ");
+    })();
+
+    return (
+        <Surface elevated className="overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-emerald-500/3 to-transparent pointer-events-none" />
+            <div className="relative p-5">
+                <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] uppercase tracking-widest text-emerald-300 inline-flex items-center gap-1.5">
+                        <Icon name="calendar" size={13} strokeWidth={2.2} /> Payoff plan
+                    </span>
+                    <Pill color={stuck ? "red" : plan.months <= 12 ? "green" : plan.months <= 24 ? "yellow" : "zinc"}>
+                        {stuck ? "payment too low" : `${plan.months} months`}
+                    </Pill>
+                </div>
+
+                {stuck ? (
+                    <p className="text-sm text-red-300 mb-3">
+                        At {fmt(budget)}/mo interest grows faster than you pay. Raise the slider to see a real payoff date.
+                    </p>
+                ) : (
+                    <div className="flex items-baseline gap-3 mb-1">
+                        <p className="text-3xl font-bold text-emerald-400 tracking-tight">{freeDateStr}</p>
+                        <span className="text-xs text-zinc-500">debt-free date</span>
+                    </div>
+                )}
+
+                {!stuck && (
+                    <p className="text-[11px] text-zinc-500 mb-3">
+                        ≈ {fmt(interestPaid)} interest along the way
+                        {monthsSaved > 0 && <span className="text-emerald-400"> · {monthsSaved}mo faster than your current plan</span>}
+                        {monthsSaved < 0 && <span className="text-yellow-400"> · {-monthsSaved}mo slower than your current plan</span>}
+                    </p>
+                )}
+
+                {/* Balance decline sparkline */}
+                {sparkPoints && !stuck && (
+                    <svg viewBox="0 0 100 28" preserveAspectRatio="none" className="w-full h-10 mb-3">
+                        <polyline
+                            points={`0,28 ${sparkPoints} 100,28`}
+                            fill="rgba(63,166,106,0.12)"
+                            stroke="none"
+                        />
+                        <polyline
+                            points={sparkPoints}
+                            fill="none"
+                            stroke="#3FA66A"
+                            strokeWidth="1.2"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    </svg>
+                )}
+
+                {/* Monthly budget slider */}
+                <div className="mb-1">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                        <span className="text-zinc-400">Monthly attack budget</span>
+                        <span className="text-white font-semibold tabular-nums">{fmt(budget)}</span>
+                    </div>
+                    <input
+                        type="range"
+                        min={minBudget}
+                        max={maxBudget}
+                        step={1000}
+                        value={Math.min(budget, maxBudget)}
+                        onChange={e => setBudget(Number(e.target.value))}
+                        className="w-full accent-emerald-500"
+                        aria-label="Monthly debt payment budget"
+                    />
+                    <div className="flex justify-between text-[10px] text-zinc-600">
+                        <span>EMIs only · {fmt(minBudget)}</span>
+                        <span>{fmt(maxBudget)}</span>
+                    </div>
+                </div>
+
+                {/* Payoff order timeline */}
+                {payoffEvents.length > 0 && !stuck && (
+                    <div className="pt-3 mt-2 border-t border-white/5 space-y-1.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Payoff order (avalanche)</p>
+                        {payoffEvents.map((p, i) => (
+                            <div key={`${p.name}-${p.month}`} className="flex items-center gap-2.5 text-xs">
+                                <span className="w-5 h-5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 flex items-center justify-center text-[10px] font-semibold shrink-0">
+                                    {i + 1}
+                                </span>
+                                <span className="text-zinc-300 truncate flex-1">{p.name}</span>
+                                <span className="text-zinc-500 tabular-nums shrink-0">month {p.month}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </Surface>
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  OVERVIEW TAB
 //  Not just "today" — the full picture: cycle progress, spending mix,
 //  debt status, top merchants, net wealth. This is your at-a-glance
@@ -877,7 +1045,7 @@ function OverviewTab({ data }: { data: StateData }) {
     const total = overview.cycleSpendByCategory.reduce((s, c) => s + c.amount, 0);
 
     return (
-        <div className="space-y-3 pb-32 fade-in">
+        <div className="space-y-3 pb-32 stagger-in">
             {/* ── Health header ─────────────────────────────────── */}
             <Surface elevated className="overflow-hidden relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/15 via-blue-500/3 to-transparent pointer-events-none" />
@@ -913,15 +1081,15 @@ function OverviewTab({ data }: { data: StateData }) {
 
             {/* ── Three big totals ────────────────────────────── */}
             <div className="grid grid-cols-3 gap-2">
-                <QuickStat icon="💸" label="Spent (cycle)" value={fmt(total)} color="text-white" />
-                <QuickStat icon="✅" label="Debt paid" value={fmt(debts.monthPaid)} color="text-emerald-400" />
-                <QuickStat icon="📥" label="Owed to you" value={fmt(ious.totalOpen)} color="text-blue-400" />
+                <QuickStat icon={<Icon name="trending-down" size={13} />} label="Spent (cycle)" value={fmt(total)} color="text-white" />
+                <QuickStat icon={<Icon name="check" size={13} />} label="Debt paid" value={fmt(debts.monthPaid)} color="text-emerald-400" />
+                <QuickStat icon={<Icon name="inbox" size={13} />} label="Owed to you" value={fmt(ious.totalOpen)} color="text-blue-400" />
             </div>
 
             {/* ── Cycle spend by category ─────────────────────── */}
             <Collapsible
                 title="Where this cycle's money went"
-                icon="📊"
+                icon={<Icon name="pie-chart" size={17} />}
                 subtitle={`${overview.cycleSpendByCategory.length} categories · ${fmt(total)} total`}
                 defaultOpen
             >
@@ -954,7 +1122,7 @@ function OverviewTab({ data }: { data: StateData }) {
             {/* ── Top merchants ──────────────────────────────── */}
             <Collapsible
                 title="Top merchants this cycle"
-                icon="🏪"
+                icon={<Icon name="search" size={17} />}
                 subtitle={`${overview.topMerchants.length} merchants`}
             >
                 {overview.topMerchants.length === 0 ? (
@@ -977,14 +1145,14 @@ function OverviewTab({ data }: { data: StateData }) {
             {/* ── Debt breakdown ─────────────────────────────── */}
             <Collapsible
                 title="Debt breakdown"
-                icon="⚔️"
+                icon={<Icon name="credit-card" size={17} />}
                 subtitle={`${debts.list.filter(d => d.balance > 0).length} active · ${fmtL(debts.totalOutstanding)} outstanding`}
             >
                 <div className="space-y-2 pt-2">
                     {(["cc", "formal", "friend"] as const).map(type => {
                         const amount = debts.byType[type];
                         if (!amount) return null;
-                        const label = type === "cc" ? "💳 Credit cards" : type === "formal" ? "🏦 Loans" : "🤝 Friends";
+                        const label = type === "cc" ? "Credit cards" : type === "formal" ? "Loans" : "Friends & family";
                         const pct = debts.totalOutstanding > 0 ? (amount / debts.totalOutstanding) * 100 : 0;
                         return (
                             <div key={type} className="flex items-center gap-3">
@@ -1004,7 +1172,7 @@ function OverviewTab({ data }: { data: StateData }) {
             {/* ── Envelopes status ───────────────────────────── */}
             <Collapsible
                 title="Envelopes"
-                icon="📦"
+                icon={<Icon name="wallet" size={17} />}
                 subtitle={`${envelopes.length} envelopes · ${fmt(envelopes.reduce((s, e) => s + e.amount, 0))} total budget`}
             >
                 <div className="space-y-2 pt-2">
@@ -1053,15 +1221,15 @@ function HistoryTab() {
 
     const now = Date.now();
     const fromMs = range === "all" ? null
-        : range === "7d"  ? now - 7  * 86_400_000
-        : range === "30d" ? now - 30 * 86_400_000
-        : range === "90d" ? now - 90 * 86_400_000
-        : null;
+        : range === "7d" ? now - 7 * 86_400_000
+            : range === "30d" ? now - 30 * 86_400_000
+                : range === "90d" ? now - 90 * 86_400_000
+                    : null;
 
     const params = new URLSearchParams({ groupBy: "day", limit: "200" });
-    if (fromMs)   params.set("from", String(fromMs));
+    if (fromMs) params.set("from", String(fromMs));
     if (category) params.set("category", category);
-    if (query)    params.set("merchant", query);
+    if (query) params.set("merchant", query);
 
     const { data, isLoading, refetch, isFetching } = useQuery({
         queryKey: ["history-list", range, category, query],
@@ -1075,21 +1243,21 @@ function HistoryTab() {
     const grandCount = days.reduce((s, d) => s + d.count, 0);
 
     const CATS = [
-        { id: "",              label: "All" },
-        { id: "food",          label: "🍱 Food" },
-        { id: "freedom",       label: "🎯 Lifestyle" },
-        { id: "commute",       label: "🚇 Commute" },
+        { id: "", label: "All" },
+        { id: "food", label: "🍱 Food" },
+        { id: "freedom", label: "🎯 Lifestyle" },
+        { id: "commute", label: "🚇 Commute" },
         { id: "subscriptions", label: "📺 Subs" },
-        { id: "family",        label: "📱 Family" },
-        { id: "rent",          label: "🏠 Rent" },
-        { id: "maintenance",   label: "⚡ Bills" },
-        { id: "debt",          label: "💳 Debt" },
-        { id: "sip",           label: "📈 SIP" },
-        { id: "other",         label: "📦 Other" },
+        { id: "family", label: "📱 Family" },
+        { id: "rent", label: "🏠 Rent" },
+        { id: "maintenance", label: "⚡ Bills" },
+        { id: "debt", label: "💳 Debt" },
+        { id: "sip", label: "📈 SIP" },
+        { id: "other", label: "📦 Other" },
     ];
 
     return (
-        <div className="space-y-3 pb-28 fade-in">
+        <div className="space-y-3 pb-28 stagger-in">
             {/* Filters */}
             <Surface className="p-3 space-y-2">
                 <Input
@@ -1191,7 +1359,7 @@ function HistoryTab() {
 // ════════════════════════════════════════════════════════════════════
 function AdvisorTab() {
     return (
-        <div className="space-y-4 pb-24 fade-in">
+        <div className="space-y-4 pb-24 stagger-in">
             <AIInsight />
             <AIQuestion />
         </div>
@@ -1202,12 +1370,12 @@ function AdvisorTab() {
 //  ROOT
 // ════════════════════════════════════════════════════════════════════
 const TABS = [
-    { id: "today",    label: "Today",    icon: "🏠" },
-    { id: "overview", label: "Overview", icon: "📊" },
-    { id: "history",  label: "History",  icon: "📜" },
-    { id: "debts",    label: "Debts",    icon: "⚔️" },
-    { id: "advisor",  label: "AI",       icon: "🧠" },
-    { id: "config",   label: "Config",   icon: "⚙️" },
+    { id: "today", label: "Today", icon: "home" },
+    { id: "overview", label: "Overview", icon: "pie-chart" },
+    { id: "history", label: "History", icon: "clock" },
+    { id: "debts", label: "Debts", icon: "credit-card" },
+    { id: "advisor", label: "Coach", icon: "sparkles" },
+    { id: "config", label: "Settings", icon: "sliders" },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -1228,42 +1396,40 @@ export default function Home() {
     return (
         <div className="min-h-screen relative">
             {/* Top bar */}
-            <header className="sticky top-0 z-20 backdrop-blur-xl bg-black/60 border-b border-white/5">
+            <header className="sticky top-0 z-20 backdrop-blur-xl bg-[#0a0a0c]/75 border-b border-white/[0.06]">
                 <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                            <span className="text-base">💎</span>
-                        </div>
+                    <div className="flex items-center gap-3">
+                        <LogoMark size={36} />
                         <div>
-                            <p className="text-sm font-semibold text-zinc-100 leading-tight">Finance OS</p>
-                            <p className="text-[10px] text-zinc-500 leading-tight">{dateStr}</p>
+                            <p className="text-[15px] font-semibold text-white leading-tight tracking-tight">Finance OS</p>
+                            <p className="text-[11px] text-zinc-500 leading-tight mt-0.5">{dateStr}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
                         {/* User chip — shows name on sm+, avatar on xs */}
-                        <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/5 border border-white/10">
+                        <div className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08]">
                             {session?.user?.image ? (
                                 <img
                                     src={session.user.image}
                                     alt={session.user.name ?? ""}
-                                    className="w-7 h-7 rounded-full border border-white/20"
+                                    className="w-6 h-6 rounded-full border border-white/20"
                                 />
                             ) : (
-                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-semibold text-white">
+                                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-[11px] font-semibold text-white">
                                     {session?.user?.name?.charAt(0)?.toUpperCase() ?? "?"}
                                 </div>
                             )}
-                            <span className="hidden sm:inline text-xs font-medium text-zinc-300 max-w-[120px] truncate">
+                            <span className="text-xs font-medium text-zinc-300 max-w-[110px] truncate">
                                 {session?.user?.name ?? session?.user?.email ?? "Signed in"}
                             </span>
                         </div>
                         <button
                             onClick={() => signOut({ callbackUrl: "/login" })}
-                            className="text-xs font-medium text-zinc-300 hover:text-white transition-colors px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center gap-1.5"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] transition-colors"
                             title="Sign out"
+                            aria-label="Sign out"
                         >
-                            <span aria-hidden>↩</span>
-                            <span>Sign out</span>
+                            <Icon name="log-out" size={16} />
                         </button>
                     </div>
                 </div>
@@ -1271,23 +1437,23 @@ export default function Home() {
 
             {/* Content */}
             <main className="max-w-3xl mx-auto px-4 pt-4 relative z-10">
-                {isLoading && <Loading label="Loading your finances…" />}
+                {isLoading && <DashboardSkeleton />}
                 {!isLoading && !dbReady && <DBNotReady />}
                 {!isLoading && dbReady && stateData && (
                     <>
-                        {tab === "today"    && <TodayTab data={stateData} />}
+                        {tab === "today" && <TodayTab data={stateData} />}
                         {tab === "overview" && <OverviewTab data={stateData} />}
-                        {tab === "history"  && <HistoryTab />}
-                        {tab === "debts"    && <DebtsTab />}
-                        {tab === "advisor"  && <AdvisorTab />}
-                        {tab === "config"   && <ConfigTab data={stateData} />}
+                        {tab === "history" && <HistoryTab />}
+                        {tab === "debts" && <DebtsTab state={stateData} />}
+                        {tab === "advisor" && <AdvisorTab />}
+                        {tab === "config" && <ConfigTab data={stateData} />}
                     </>
                 )}
             </main>
 
             {/* Bottom nav */}
             <nav
-                className="fixed bottom-0 left-0 right-0 z-20 backdrop-blur-xl bg-black/70 border-t border-white/5"
+                className="fixed bottom-0 left-0 right-0 z-20 backdrop-blur-xl bg-[#0a0a0c]/85 border-t border-white/[0.06]"
                 style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
             >
                 <div className="max-w-3xl mx-auto px-2 py-1.5 flex">
@@ -1297,11 +1463,13 @@ export default function Home() {
                             <button
                                 key={t.id}
                                 onClick={() => setTab(t.id)}
-                                className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 rounded-xl transition-all relative ${active ? "text-blue-400" : "text-zinc-500 hover:text-zinc-300"}`}
+                                className={`flex-1 flex flex-col items-center justify-center py-2 gap-1 transition-all relative ${active ? "text-white" : "text-zinc-500 hover:text-zinc-300"}`}
+                                aria-current={active ? "page" : undefined}
                             >
-                                {active && <span className="absolute top-0 inset-x-4 h-[2px] rounded-full bg-blue-400" />}
-                                <span className="text-lg leading-none">{t.icon}</span>
-                                <span className="text-[10px] leading-none font-medium">{t.label}</span>
+                                <span className={`flex items-center justify-center w-12 h-7 rounded-full transition-all duration-300 ${active ? "bg-[#5b7cfa]/25 text-[#9db4ff]" : ""}`}>
+                                    <Icon name={t.icon} size={19} strokeWidth={active ? 2 : 1.7} />
+                                </span>
+                                <span className={`text-[10px] leading-none transition-colors ${active ? "font-semibold text-zinc-200" : "font-medium"}`}>{t.label}</span>
                             </button>
                         );
                     })}

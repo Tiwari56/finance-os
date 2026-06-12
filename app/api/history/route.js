@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server";
 import { getState } from "../../../lib/store";
+import { auth } from "../../../auth";
 import { CATEGORIES, getEnvelopes, getProfile } from "../../../lib/finance";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,8 @@ export async function GET(req) {
   const url = new URL(req.url);
   const monthsBack = Math.max(1, Math.min(36, Number(url.searchParams.get("months")) || 6));
 
-  const state = await getState();
+  const session = await auth();
+  const state = await getState(session?.user?.id ?? null);
   const envelopes = getEnvelopes(state);
   const profile   = getProfile(state);
   const envelopeOf = (cat) => CATEGORIES[cat]?.envelope || "freedom";

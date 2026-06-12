@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Surface, Pill, Input, apiFetch, apiPost, Loading, Collapsible } from "@/lib/ui";
+import { Surface, Pill, Input, apiFetch, apiPost, Loading, Collapsible, Icon } from "@/lib/ui";
 import { fmt } from "@/lib/format";
 import type { StateData } from "@/lib/ui";
 
@@ -10,16 +10,16 @@ interface FeatureMeta {
     id: string; name: string; description: string; category: string;
     icon: string; version: number;
     dependencies: string[]; routes: string[];
-    settings: Array<{ key: string; label: string; description: string; type: string; default: unknown; placeholder?: string; min?: number; max?: number; options?: Array<{value: string; label: string}> }>;
+    settings: Array<{ key: string; label: string; description: string; type: string; default: unknown; placeholder?: string; min?: number; max?: number; options?: Array<{ value: string; label: string }> }>;
     health: { ok: boolean; info?: string };
 }
 
 const CAT_META: Record<string, { label: string; color: string }> = {
-    money:      { label: "💰 Money",       color: "blue"   },
-    debts:      { label: "⚔️ Debts",        color: "red"    },
-    analysis:   { label: "📊 Analysis",    color: "purple" },
-    automation: { label: "🤖 Automation",  color: "yellow" },
-    system:     { label: "⚙️ System",      color: "zinc"   },
+    money: { label: "Money", color: "blue" },
+    debts: { label: "Debts", color: "red" },
+    analysis: { label: "Analysis", color: "purple" },
+    automation: { label: "Automation", color: "yellow" },
+    system: { label: "System", color: "zinc" },
 };
 const CAT_ORDER = ["money", "debts", "analysis", "automation", "system"];
 
@@ -28,11 +28,11 @@ export function ConfigTab({ data }: { data: StateData }) {
 
     const { data: registry, isLoading: regLoading } = useQuery({
         queryKey: ["config-registry"],
-        queryFn:  () => apiFetch("/api/config/registry"),
+        queryFn: () => apiFetch("/api/config/registry"),
     });
     const { data: health } = useQuery({
         queryKey: ["health"],
-        queryFn:  () => apiFetch("/api/health"),
+        queryFn: () => apiFetch("/api/health"),
         refetchInterval: 60_000,
     });
 
@@ -51,30 +51,15 @@ export function ConfigTab({ data }: { data: StateData }) {
             {/* ── Envelopes editor ────────────────────────────────── */}
             <EnvelopesSection data={data} />
 
-            {/* ── Features (grouped) ──────────────────────────────── */}
-            {regLoading && <Loading label="Loading feature registry…" />}
-
-            {!regLoading && CAT_ORDER.filter(c => byCat[c]?.length).map(cat => (
-                <section key={cat}>
-                    <div className="flex items-center justify-between px-1 mb-2">
-                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium">{CAT_META[cat]?.label ?? cat}</p>
-                        <p className="text-[11px] text-zinc-600">{byCat[cat].length} feature{byCat[cat].length > 1 ? "s" : ""}</p>
-                    </div>
-                    <div className="space-y-2">
-                        {byCat[cat].map(f => <FeatureCard key={f.id} feature={f} />)}
-                    </div>
-                </section>
-            ))}
-
             {/* ── Bills CRUD ───────────────────────────────────────── */}
             <BillsSection />
 
             {/* ── System / Integrations Health ─────────────────────── */}
             <section>
-                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">🔌 Integrations</p>
+                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">Integrations</p>
                 <div className="space-y-2">
                     <IntegrationRow
-                        icon="🧠"
+                        icon={<Icon name="sparkles" size={18} />}
                         name="Anthropic Claude (AI Coach)"
                         envKey="ANTHROPIC_API_KEY"
                         configured={!!health?.anthropic?.configured}
@@ -82,7 +67,7 @@ export function ConfigTab({ data }: { data: StateData }) {
                         testUrl="/api/health?test=anthropic"
                     />
                     <IntegrationRow
-                        icon="📧"
+                        icon={<Icon name="inbox" size={18} />}
                         name="Resend (Email reports)"
                         envKey="RESEND_API_KEY"
                         configured={!!health?.resend?.configured}
@@ -90,20 +75,37 @@ export function ConfigTab({ data }: { data: StateData }) {
                         extraInfo={health?.resend?.reportEmail ? `Sends to ${health.resend.reportEmail}` : "REPORT_EMAIL not set"}
                         testUrl="/api/health?test=resend"
                     />
-                    <IntegrationRow
-                        icon="📱"
-                        name="SMS Webhook (n8n)"
-                        envKey="LOG_SECRET"
-                        configured={!!health?.openclaw?.secretConfigured}
-                        hint={health?.openclaw?.secretHint}
-                        extraInfo="Endpoint: /api/expenses/log (new) · /api/log-expense (legacy)"
-                    />
                 </div>
             </section>
 
+            {/* ── n8n webhook (per-account secret) ─────────────────── */}
+            <N8nWebhookSection />
+
+            {/* ── Advanced: feature registry (developer detail) ────── */}
+            <Collapsible
+                title="Advanced"
+                subtitle={`${features.length} feature modules · endpoints & settings`}
+                icon={<Icon name="sliders" size={17} />}
+            >
+                {regLoading && <Loading label="Loading feature registry…" />}
+                <div className="space-y-4 pt-2">
+                    {!regLoading && CAT_ORDER.filter(c => byCat[c]?.length).map(cat => (
+                        <section key={cat}>
+                            <div className="flex items-center justify-between px-1 mb-2">
+                                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium">{CAT_META[cat]?.label ?? cat}</p>
+                                <p className="text-[11px] text-zinc-600">{byCat[cat].length} feature{byCat[cat].length > 1 ? "s" : ""}</p>
+                            </div>
+                            <div className="space-y-2">
+                                {byCat[cat].map(f => <FeatureCard key={f.id} feature={f} />)}
+                            </div>
+                        </section>
+                    ))}
+                </div>
+            </Collapsible>
+
             {/* ── Storage ──────────────────────────────────────────── */}
             <section>
-                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">💾 Storage</p>
+                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">Storage</p>
                 <Surface className="p-4 space-y-2">
                     <div className="flex justify-between text-sm">
                         <span className="text-zinc-400">Backend</span>
@@ -166,7 +168,6 @@ function ProfileSection({ data }: { data: StateData }) {
                     <p className="text-sm font-semibold text-zinc-100">Profile</p>
                     <p className="text-[11px] text-zinc-500 mt-0.5">Drives allowance + envelope calculations</p>
                 </div>
-                <span className="text-2xl">👤</span>
             </div>
             <div className="space-y-3">
                 <div>
@@ -215,7 +216,7 @@ function EnvelopesSection({ data }: { data: StateData }) {
         <Collapsible
             title="Budget envelopes"
             subtitle={`Total ${fmt(total)} / Income ${fmt(income)}`}
-            icon="🧱"
+            icon={<Icon name="wallet" size={17} />}
             badge={diff === 0
                 ? <Pill color="green">Balanced</Pill>
                 : <Pill color={diff > 0 ? "yellow" : "red"}>{diff > 0 ? `+${fmt(diff)} unallocated` : `${fmt(-diff)} over`}</Pill>}
@@ -254,7 +255,7 @@ function BillsSection() {
     const qc = useQueryClient();
     const { data, isLoading } = useQuery({
         queryKey: ["bills"],
-        queryFn:  () => apiFetch("/api/bills/status"),
+        queryFn: () => apiFetch("/api/bills/status"),
     });
 
     const upsert = useMutation({
@@ -278,7 +279,7 @@ function BillsSection() {
         <Collapsible
             title="Fixed bills"
             subtitle={`${bills.length} active`}
-            icon="📋"
+            icon={<Icon name="receipt" size={17} />}
             badge={<button onClick={(e) => { e.stopPropagation(); setAdding(true); }} className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded-lg hover:bg-blue-500/10">+ Add</button>}
         >
             {isLoading && <Loading />}
@@ -395,15 +396,150 @@ function FeatureCard({ feature }: { feature: FeatureMeta }) {
     );
 }
 
+// ─── n8n webhook setup ─────────────────────────────────────────────
+//  Shows the signed-in user's personal webhook endpoint + secret so
+//  the n8n SMS workflow can be pointed at it with zero env setup.
+function N8nWebhookSection() {
+    const qc = useQueryClient();
+    const [revealed, setRevealed] = useState(false);
+    const [copied, setCopied] = useState<string | null>(null);
+    const [testResult, setTestResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
+    const [testing, setTesting] = useState(false);
+
+    const { data, isLoading } = useQuery({
+        queryKey: ["webhook-info"],
+        queryFn: () => apiFetch("/api/automation/webhook"),
+    });
+
+    const rotate = useMutation({
+        mutationFn: () => apiPost("/api/automation/webhook/rotate", {}),
+        onSuccess: () => { qc.invalidateQueries({ queryKey: ["webhook-info"] }); setRevealed(true); },
+    });
+
+    const copy = async (text: string, key: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopied(key);
+            setTimeout(() => setCopied(null), 1500);
+        } catch { /* clipboard unavailable (non-https) — ignore */ }
+    };
+
+    const sendTest = async () => {
+        if (!data?.secret) return;
+        setTesting(true); setTestResult(null);
+        try {
+            const r = await apiPost("/api/expenses/log", {
+                amount: 1,
+                merchant: "Webhook test",
+                source: "n8n-test",
+                note: "Sent from Config → n8n webhook test",
+                clientRequestId: "webhook-test-" + Date.now(),
+                secret: data.secret,
+            });
+            setTestResult(r);
+            qc.invalidateQueries({ queryKey: ["state"] });
+        } catch (err) {
+            setTestResult({ ok: false, error: (err as Error).message });
+        } finally {
+            setTesting(false);
+        }
+    };
+
+    const masked = (s: string) => s.slice(0, 6) + "•".repeat(8) + s.slice(-4);
+
+    return (
+        <section>
+            <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">n8n / SMS automation</p>
+            <Surface elevated className="p-4 space-y-3">
+                {isLoading && <Loading label="Loading webhook info…" />}
+                {!isLoading && data?.ok && (
+                    <>
+                        <p className="text-[12px] text-zinc-400 leading-relaxed">
+                            Point your n8n workflow at this endpoint. The secret identifies your account —
+                            transactions land here automatically.
+                        </p>
+
+                        <div>
+                            <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 block">Endpoint</label>
+                            <div className="flex items-center gap-2">
+                                <code className="flex-1 text-[11px] bg-black/40 text-emerald-400 px-3 py-2.5 rounded-xl font-mono border border-white/5 truncate">
+                                    POST {data.endpoint}
+                                </code>
+                                <button onClick={() => copy(data.endpoint, "endpoint")} className="btn-soft !px-3 !py-2 !text-[11px] shrink-0">
+                                    {copied === "endpoint" ? "✓" : "Copy"}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 block">Your webhook secret</label>
+                            <div className="flex items-center gap-2">
+                                <code className="flex-1 text-[11px] bg-black/40 text-zinc-300 px-3 py-2.5 rounded-xl font-mono border border-white/5 truncate">
+                                    {revealed ? data.secret : masked(data.secret)}
+                                </code>
+                                <button onClick={() => setRevealed(r => !r)} className="btn-soft !px-3 !py-2 !text-[11px] shrink-0">
+                                    {revealed ? "Hide" : "Show"}
+                                </button>
+                                <button onClick={() => copy(data.secret, "secret")} className="btn-soft !px-3 !py-2 !text-[11px] shrink-0">
+                                    {copied === "secret" ? "✓" : "Copy"}
+                                </button>
+                            </div>
+                        </div>
+
+                        <details className="group">
+                            <summary className="cursor-pointer list-none text-[11px] text-blue-400 hover:text-blue-300">
+                                <span className="group-open:hidden">▸ Show sample payload</span>
+                                <span className="hidden group-open:inline">▾ Sample payload</span>
+                            </summary>
+                            <div className="mt-2 relative">
+                                <pre className="text-[10.5px] bg-black/40 text-zinc-400 px-3 py-2.5 rounded-xl font-mono border border-white/5 overflow-x-auto">
+                                    {JSON.stringify(data.sampleBody, null, 2)}
+                                </pre>
+                                <button
+                                    onClick={() => copy(JSON.stringify(data.sampleBody, null, 2), "payload")}
+                                    className="absolute top-2 right-2 btn-soft !px-2 !py-1 !text-[10px]"
+                                >
+                                    {copied === "payload" ? "✓" : "Copy"}
+                                </button>
+                            </div>
+                        </details>
+
+                        {testResult && (
+                            <p className={`text-[11px] rounded-xl px-3 py-2 ${testResult.ok
+                                ? "text-emerald-300 bg-emerald-500/10 border border-emerald-500/20"
+                                : "text-red-300 bg-red-500/10 border border-red-500/20"}`}>
+                                {testResult.ok ? `✓ ${testResult.message ?? "Webhook works!"} (logged a ₹1 test — delete it from History)` : `✗ ${testResult.error}`}
+                            </p>
+                        )}
+
+                        <div className="flex gap-2 pt-1">
+                            <button onClick={sendTest} disabled={testing} className="btn-primary flex-1 !text-xs">
+                                {testing ? "Testing…" : "Send ₹1 test"}
+                            </button>
+                            <button
+                                onClick={() => confirm("Rotate the secret? Your n8n workflow must be updated with the new value.") && rotate.mutate()}
+                                disabled={rotate.isPending}
+                                className="btn-soft flex-1 !text-xs"
+                            >
+                                {rotate.isPending ? "Rotating…" : "Rotate secret"}
+                            </button>
+                        </div>
+                    </>
+                )}
+            </Surface>
+        </section>
+    );
+}
+
 // ─── Integration row ───────────────────────────────────────────────
 function IntegrationRow({
     icon, name, envKey, configured, hint, extraInfo, testUrl,
 }: {
-    icon: string; name: string; envKey: string;
+    icon: React.ReactNode; name: string; envKey: string;
     configured: boolean; hint?: string; extraInfo?: string; testUrl?: string;
 }) {
     const [testing, setTesting] = useState(false);
-    const [result, setResult]   = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
+    const [result, setResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null);
 
     const runTest = async () => {
         if (!testUrl) return;
@@ -421,7 +557,7 @@ function IntegrationRow({
     return (
         <Surface className="p-4">
             <div className="flex items-start gap-3">
-                <span className="text-xl">{icon}</span>
+                <span className="w-9 h-9 rounded-xl bg-white/[0.05] border border-white/[0.06] flex items-center justify-center text-zinc-300 shrink-0">{icon}</span>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-zinc-100">{name}</p>

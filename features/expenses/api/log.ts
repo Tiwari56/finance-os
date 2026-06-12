@@ -3,6 +3,12 @@
 //  POST /api/expenses/log  (n8n webhook target)
 //  Also reachable at /api/log-expense (legacy alias).
 //
+//  Caller resolution (first match wins):
+//    1. Session user (in-app manual entry)
+//    2. Per-user webhook secret — matches flags.webhookSecret,
+//       identifies the user. This is what n8n should send.
+//    3. Global LOG_SECRET env + explicit body.userId (legacy n8n)
+//
 //  Auto-links debt-category expenses to a matching debt (creates a
 //  paired debt_payment row + reduces the debt balance). Friend names
 //  not yet known get a new debt row at balance=0.
@@ -14,9 +20,11 @@ import { db } from "@/features/core/db/client";
 import { expenses } from "../schema";
 import { debts, debtPayments } from "@/features/debts/schema";
 import { envelopes } from "@/features/envelopes/schema";
+import { flags } from "@/features/core/db/schema";
+import { isFlexEnvelope } from "@/features/envelopes/lib/keys";
 import { categorize, isFlexCategory, CATEGORIES } from "../lib/categorize";
 import { dailyAllowance } from "@/features/allowance/lib/math";
-import { eq, gte, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, sql, inArray } from "drizzle-orm";
 
 // ─── Auth ─────────────────────────────────────────────────────────
 function secretsMatch(provided: string, expected: string): boolean {
@@ -29,12 +37,43 @@ function secretsMatch(provided: string, expected: string): boolean {
     return timingSafeEqual(aPad, bPad) && a.length === b.length;
 }
 
-export function authed(req: Request, secret?: string): boolean {
-    const expected = process.env.LOG_SECRET;
-    if (!expected) return true;
+/**
+ * Resolve which user this expense belongs to. Returns a userId or an
+ * error Response. See module header for the resolution order.
+ */
+async function resolveUserId(
+    req: Request,
+    data: { secret?: string; userId?: string },
+    sessionUserId?: string,
+): Promise<{ userId: string } | { error: Response }> {
+    if (sessionUserId) return { userId: sessionUserId };
+
     const url = new URL(req.url);
-    const provided = url.searchParams.get("secret") ?? secret ?? "";
-    return secretsMatch(provided, expected);
+    const provided = url.searchParams.get("secret") ?? data.secret ?? "";
+
+    // Per-user webhook secret → identifies the user directly
+    if (provided) {
+        const rows = await db
+            .select({ id: flags.id })
+            .from(flags)
+            .where(eq(flags.webhookSecret, provided))
+            .limit(1);
+        if (rows.length > 0) return { userId: rows[0].id };
+    }
+
+    // Legacy: global LOG_SECRET + explicit userId in the body
+    const expected = process.env.LOG_SECRET;
+    if (expected && !secretsMatch(provided, expected)) {
+        return { error: Response.json({ ok: false, error: "Unauthorized" }, { status: 401 }) };
+    }
+    if (data.userId) return { userId: data.userId };
+
+    return {
+        error: Response.json(
+            { ok: false, error: "userId required — send your per-user webhook secret, or LOG_SECRET + userId" },
+            { status: 400 }
+        ),
+    };
 }
 
 // ─── Fuzzy debt matcher (same logic the user approved earlier) ────
@@ -73,12 +112,9 @@ const LogBody = z.object({
     currency: z.string().optional().default("INR"),
     accountSuffix: z.string().optional(),
     note: z.string().optional(),
-    userId: z.string().optional(),   // for webhook/n8n calls
+    userId: z.string().optional(),   // legacy webhook calls (LOG_SECRET mode)
 });
 
-// Supports both call styles:
-//   1. Direct from app/api/log-expense:  logExpense(req, sessionUserId?)
-//   2. Via catch-all router:             logExpense(req, { userId, ... })
 // Two call signatures supported:
 //   1. Direct from app/api/log-expense:  logExpense(req, sessionUserId?: string)
 //   2. Via catch-all router:             logExpense(req, ctx: { userId?: string, ... })
@@ -101,15 +137,9 @@ export async function logExpense(
 
     const data = parsed.data;
 
-    if (!authed(req, data.secret)) {
-        return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Resolve userId — session takes priority, then body (for n8n/SMS webhook)
-    const userId = sessionUserId ?? data.userId;
-    if (!userId) {
-        return Response.json({ ok: false, error: "userId required" }, { status: 400 });
-    }
+    const resolved = await resolveUserId(req, data, sessionUserId);
+    if ("error" in resolved) return resolved.error;
+    const userId = resolved.userId;
 
     // Idempotency
     if (data.clientRequestId) {
@@ -150,7 +180,10 @@ export async function logExpense(
     // ─── Auto-link debt-category expenses → debt_payments ────────
     let debtLinked: { debtId: string; debtName: string } | null = null;
     if (category === "debt" && data.merchant) {
-        const allDebts = await db.select({ id: debts.id, name: debts.name, balance: debts.balance }).from(debts);
+        const allDebts = await db
+            .select({ id: debts.id, name: debts.name, balance: debts.balance })
+            .from(debts)
+            .where(eq(debts.userId, userId));
         const matched = findDebt(allDebts, data.merchant);
 
         let debtId: string;
@@ -199,25 +232,31 @@ export async function logExpense(
         .filter(([, c]) => c.envelope === "food" || c.envelope === "freedom")
         .map(([k]) => k);
 
+    const flexWhere = (sinceTs: number) => and(
+        eq(expenses.userId, userId),
+        gte(expenses.ts, sinceTs),
+        inArray(expenses.category, flexCategoryKeys),
+    );
     const monthRows = await db
         .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
         .from(expenses)
-        .where(sql`${expenses.ts} >= ${monthStart} AND ${expenses.category} IN (${sql.join(flexCategoryKeys.map(c => sql`${c}`), sql`, `)})`);
+        .where(flexWhere(monthStart));
     const todayRows = await db
         .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
         .from(expenses)
-        .where(sql`${expenses.ts} >= ${dayStart} AND ${expenses.category} IN (${sql.join(flexCategoryKeys.map(c => sql`${c}`), sql`, `)})`);
+        .where(flexWhere(dayStart));
 
     const monthSpent = Number(monthRows[0]?.total ?? 0);
     const todaySpent = Number(todayRows[0]?.total ?? 0);
 
-    // Flex budget = food + freedom envelopes (real, not hardcoded)
-    const flexEnvs = await db
-        .select({ amount: envelopes.amount })
+    // Flex budget = food + freedom envelopes (defensive 30k fallback if unset)
+    const userEnvs = await db
+        .select({ id: envelopes.id, amount: envelopes.amount })
         .from(envelopes)
-        .where(inArray(envelopes.id, ["food", "freedom"]));
-    const flexBudget = flexEnvs.reduce((s, e) => s + Number(e.amount || 0), 30000) - 30000 || 30000;
-    // ↑ defensive fallback if envelopes table is empty
+        .where(eq(envelopes.userId, userId));
+    const flexBudget = userEnvs
+        .filter(e => isFlexEnvelope(e.id))
+        .reduce((s, e) => s + Number(e.amount || 0), 0) || 30_000;
 
     const allowance = dailyAllowance(flexBudget, monthSpent);
     const isFlex = isFlexCategory(category);
