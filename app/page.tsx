@@ -48,7 +48,7 @@ function salaryCycle(profile: StateData["profile"], allowance: StateData["allowa
 // ════════════════════════════════════════════════════════════════════
 //  TODAY TAB
 // ════════════════════════════════════════════════════════════════════
-function TodayTab({ data }: { data: StateData }) {
+function TodayTab({ data, onNavigate }: { data: StateData; onNavigate: (tab: TabId) => void }) {
     const qc = useQueryClient();
     const toast = useToast();
     const [showAddExpense, setShowAddExpense] = useState(false);
@@ -137,8 +137,8 @@ function TodayTab({ data }: { data: StateData }) {
                 </Surface>
             )}
 
-            {/* ── Debt Command Centre ─────────────────────────────── */}
-            <DebtCommand debts={debts} envelopes={envelopes} envelopeSpent={envelopeSpent} cycle={cycle} />
+            {/* ── Debt at a glance → manage on the Debts tab ──────── */}
+            <DebtGlance debts={debts} onOpen={() => onNavigate("debts")} />
 
             {/* ── AI insight ──────────────────────────────────────── */}
             <AIInsight compact />
@@ -154,7 +154,7 @@ function TodayTab({ data }: { data: StateData }) {
                 defaultOpen
             >
                 {bills.length === 0
-                    ? <EmptyState icon="📋" title="No bills configured" hint="Add recurring bills in the Config tab." />
+                    ? <EmptyState icon="📋" title="No bills configured" hint="Add recurring bills in the Settings tab." />
                     : (
                         <div className="divide-y divide-white/5">
                             {bills.map(b => (
@@ -458,37 +458,24 @@ function EnvelopeStrip({ envelopes, spent }: { envelopes: Envelope[]; spent: Rec
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  DEBT COMMAND
-//  Surfaces the data the user explicitly asked for: total outstanding,
-//  paid this cycle, highest-interest debt (avalanche priority), and
-//  a "debt-free ETA" projection if a debt envelope exists.
+//  DEBT GLANCE
+//  The Week tab is for spending. Debt is managed on its own tab, so here
+//  we only show a one-line glance + a tap-through — keeping the two
+//  concerns cleanly separate (the full picture lives on Overview).
 // ════════════════════════════════════════════════════════════════════
-function DebtCommand({
-    debts, envelopes, envelopeSpent, cycle,
-}: { debts: StateData["debts"]; envelopes: Envelope[]; envelopeSpent: Record<string, number>; cycle: Cycle }) {
+function DebtGlance({ debts, onOpen }: { debts: StateData["debts"]; onOpen: () => void }) {
     const active = debts.list.filter(d => d.balance > 0);
-    const totalCC = active.filter(d => d.type === "cc").reduce((s, d) => s + d.balance, 0);
-    const totalFormal = active.filter(d => d.type === "formal").reduce((s, d) => s + d.balance, 0);
-    const totalFriend = active.filter(d => d.type === "friend").reduce((s, d) => s + d.balance, 0);
-    const sortedByRate = [...active].sort((a, b) => b.rate - a.rate);
-    const priority = sortedByRate[0];
-
-    const debtEnv = envelopes.find(e => (e.key ?? e.id) === "debt");
-    const debtSpent = debtEnv ? envelopeSpent.debt ?? 0 : 0;
-    const debtBudget = debtEnv?.amount ?? 0;
-    const debtLeftThisCycle = Math.max(0, debtBudget - debtSpent);
-
-    // Avalanche ETA: months to zero at current debt envelope rate
-    const monthsToFree = debtBudget > 0 ? Math.ceil(debts.totalOutstanding / debtBudget) : null;
 
     if (active.length === 0) {
         return (
-            <Surface className="p-4 !border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent">
+            <Surface className="p-4 !border-emerald-500/25 bg-gradient-to-br from-emerald-500/10 to-transparent">
                 <div className="flex items-center gap-3">
-                    <span className="text-2xl">🎉</span>
+                    <span className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-300 shrink-0">
+                        <Icon name="check" size={18} strokeWidth={2.2} />
+                    </span>
                     <div>
-                        <p className="text-sm font-semibold text-emerald-300">Debt-free</p>
-                        <p className="text-[11px] text-emerald-200/70 mt-0.5">Now redirect that debt envelope to emergency / SIP / goals.</p>
+                        <p className="text-sm font-semibold text-emerald-300">No debt — nicely done</p>
+                        <p className="text-[11px] text-emerald-200/70 mt-0.5">Keep that money flowing into savings and goals.</p>
                     </div>
                 </div>
             </Surface>
@@ -496,77 +483,20 @@ function DebtCommand({
     }
 
     return (
-        <Surface elevated className="overflow-hidden relative">
-            <div className="absolute inset-0 bg-gradient-to-br from-red-500/15 via-red-500/3 to-transparent pointer-events-none" />
-            <div className="relative p-5">
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 text-red-300">
-                        <Icon name="flame" size={15} strokeWidth={2} />
-                        <span className="text-[11px] uppercase tracking-widest">Debt command</span>
-                    </div>
-                    {monthsToFree !== null && (
-                        <Pill color={monthsToFree <= 12 ? "green" : monthsToFree <= 24 ? "yellow" : "red"}>
-                            {monthsToFree}mo to free
-                        </Pill>
-                    )}
+        <button onClick={onOpen} className="w-full text-left active:scale-[0.99] transition-transform">
+            <Surface className="p-4 flex items-center gap-3 hover:!border-white/15 transition-colors">
+                <span className="w-9 h-9 rounded-xl bg-red-500/12 border border-red-500/20 flex items-center justify-center text-red-300 shrink-0">
+                    <Icon name="flame" size={18} />
+                </span>
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-zinc-100">You owe {fmtL(debts.totalOutstanding)}</p>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                        {active.length} active · {fmt(debts.monthPaid)} paid this cycle · tap to manage
+                    </p>
                 </div>
-
-                <div className="flex items-baseline gap-3 mb-3">
-                    <p className="text-3xl font-bold text-red-400 tabular-nums tracking-tight">{fmtL(debts.totalOutstanding)}</p>
-                    <span className="text-xs text-zinc-500">outstanding</span>
-                </div>
-
-                {/* Type breakdown */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                    <DebtSlice label="Cards" value={totalCC} color="red" priority />
-                    <DebtSlice label="Loans" value={totalFormal} color="orange" />
-                    <DebtSlice label="Friends" value={totalFriend} color="purple" />
-                </div>
-
-                {/* Highest-interest target */}
-                {priority && priority.rate > 0 && (
-                    <div className="rounded-xl bg-black/30 border border-red-500/15 px-3 py-2.5 mb-3">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] uppercase tracking-wider text-red-300 font-medium inline-flex items-center gap-1.5">
-                                <Icon name="trending-down" size={12} strokeWidth={2.2} /> Avalanche target
-                            </span>
-                            <span className="text-[10px] text-zinc-500">attack first</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <div className="min-w-0">
-                                <p className="text-sm text-zinc-100 truncate">{priority.name}</p>
-                                <p className="text-[11px] text-zinc-500">{priority.rate}% p.a.</p>
-                            </div>
-                            <p className="text-sm font-semibold text-white tabular-nums">{fmt(priority.balance)}</p>
-                        </div>
-                    </div>
-                )}
-
-                {/* This cycle's debt commitment */}
-                <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-3 border-t border-white/5">
-                    <span>This cycle: <span className="text-emerald-400 font-medium">{fmt(debts.monthPaid)}</span> paid</span>
-                    {debtBudget > 0 && (
-                        <span>{fmt(debtLeftThisCycle)} debt-envelope left · day {cycle.dayOfCycle}/{cycle.totalDays}</span>
-                    )}
-                </div>
-            </div>
-        </Surface>
-    );
-}
-
-function DebtSlice({ label, value, color, priority }: { label: string; value: number; color: "red" | "orange" | "purple"; priority?: boolean }) {
-    const colors = {
-        red: { bg: "bg-red-500/10", border: "border-red-500/20", text: "text-red-300" },
-        orange: { bg: "bg-orange-500/10", border: "border-orange-500/20", text: "text-orange-300" },
-        purple: { bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-300" },
-    } as const;
-    const c = colors[color];
-    return (
-        <div className={`rounded-xl ${c.bg} border ${c.border} px-3 py-2`}>
-            <p className={`text-[10px] uppercase tracking-wider ${c.text} font-medium`}>{label}</p>
-            <p className="text-sm font-semibold text-white tabular-nums mt-0.5">{value > 0 ? fmt(value) : "—"}</p>
-            {priority && value > 0 && <p className="text-[9px] text-red-400/70 mt-0.5">highest cost</p>}
-        </div>
+                <Icon name="chevron-down" size={16} className="-rotate-90 text-zinc-500 shrink-0" />
+            </Surface>
+        </button>
     );
 }
 
@@ -2044,7 +1974,7 @@ export default function Home() {
                 {!isLoading && !dbReady && <DBNotReady />}
                 {!isLoading && dbReady && stateData && (
                     <>
-                        {tab === "week" && <TodayTab data={stateData} />}
+                        {tab === "week" && <TodayTab data={stateData} onNavigate={setTab} />}
                         {tab === "overview" && <OverviewTab data={stateData} />}
                         {tab === "history" && <HistoryTab />}
                         {tab === "debts" && <DebtsTab state={stateData} />}
