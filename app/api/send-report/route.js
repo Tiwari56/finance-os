@@ -168,7 +168,7 @@ function buildHtml(d, type, now) {
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Finance OS — ${type === "weekly" ? "Weekly" : "Daily"} Report</title></head>
+<title>Steady — ${type === "weekly" ? "Weekly" : "Daily"} Report</title></head>
 <body style="margin:0;padding:0;background:#0e0e0e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#0e0e0e">
 <tr><td align="center" style="padding:24px 16px">
@@ -179,7 +179,7 @@ function buildHtml(d, type, now) {
     <table width="100%" cellpadding="0" cellspacing="0">
       <tr>
         <td>
-          <div style="font-size:22px;font-weight:700;color:#e8e8e3">Finance OS</div>
+          <div style="font-size:22px;font-weight:700;color:#e8e8e3">Steady</div>
           <div style="font-size:12px;color:#666;margin-top:2px">${type === "weekly" ? "Weekly Digest" : "Daily Report"} · ${now.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
         </td>
         <td style="text-align:right">
@@ -260,7 +260,7 @@ function buildHtml(d, type, now) {
 
   <!-- FOOTER -->
   <tr><td style="padding:20px 0 8px;text-align:center;font-size:11px;color:#555">
-    Finance OS · auto-sent by Vercel Cron · <a href="#" style="color:#555">manage settings</a>
+    Steady · auto-sent by Vercel Cron · <a href="#" style="color:#555">manage settings</a>
   </td></tr>
 
 </table>
@@ -279,7 +279,7 @@ async function sendEmail(to, subject, html, text) {
     method: "POST",
     headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: "Finance OS <reports@your-domain.com>",  // update after Resend domain setup
+      from: "Steady <reports@your-domain.com>",  // update after Resend domain setup
       to: [to],
       subject,
       html,
@@ -319,7 +319,7 @@ async function handle(req) {
     ? `📊 Weekly Finance Digest — ${now.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}`
     : `💰 Daily Finance Report — ${now.toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})} · ${fmt(Math.max(0,data.allowance.perDay-data.todayFlex))} left today`;
 
-  const plainText = `Finance OS ${type === "weekly" ? "Weekly" : "Daily"} Report\n\nToday's allowance remaining: ${fmt(Math.max(0, data.allowance.perDay - data.todayFlex))} of ${fmt(data.allowance.perDay)}\nMonth: ${data.allowance.pctMonthGone}% gone, ${data.allowance.pctBudgetGone}% budget used\nVerdict: ${data.verdict.title}\n\nTotal debt: ${fmtL(data.totalDebt)}\nDebt-free in: ${data.proj.months} months\n\nThis week flex: ${fmt(data.weekFlex)} of ${fmt(data.weekBudget)} budget`;
+  const plainText = `Steady ${type === "weekly" ? "Weekly" : "Daily"} Report\n\nToday's allowance remaining: ${fmt(Math.max(0, data.allowance.perDay - data.todayFlex))} of ${fmt(data.allowance.perDay)}\nMonth: ${data.allowance.pctMonthGone}% gone, ${data.allowance.pctBudgetGone}% budget used\nVerdict: ${data.verdict.title}\n\nTotal debt: ${fmtL(data.totalDebt)}\nDebt-free in: ${data.proj.months} months\n\nThis week flex: ${fmt(data.weekFlex)} of ${fmt(data.weekBudget)} budget`;
 
   const result = await sendEmail(toEmail, subject, html, plainText);
 

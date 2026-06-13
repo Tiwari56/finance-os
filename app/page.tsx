@@ -63,7 +63,7 @@ function TodayTab({ data }: { data: StateData }) {
         onError: () => toast("Could not pay bill", "error"),
     });
 
-    const { allowance, bills, expenses, debts, ious, goals, envelopes, profile, smartAllowance: smart } = data;
+    const { allowance, bills, expenses, debts, ious, goals, envelopes, profile, weekly } = data;
     const cycle = salaryCycle(profile, allowance);
     const urgent = bills.filter(b => b.overdue || b.dueSoon);
     const todayExp = expenses.recent.filter(e => e.ts >= startOfDay());
@@ -76,8 +76,8 @@ function TodayTab({ data }: { data: StateData }) {
     return (
         <div className="space-y-3 pb-32 stagger-in">
 
-            {/* ── Salary cycle hero ───────────────────────────────── */}
-            <SalaryCycleHero cycle={cycle} allowance={allowance} profile={profile} billsRemaining={billsRemaining} smart={smart} />
+            {/* ── Weekly money hero — the unmissable block ───────── */}
+            <WeeklyHero weekly={weekly} cycle={cycle} />
 
             {/* ── Salary day celebration (only on day=1) ──────────── */}
             {cycle.isSalaryDay && (
@@ -253,29 +253,24 @@ function TodayTab({ data }: { data: StateData }) {
 //  salary arrive.
 // ════════════════════════════════════════════════════════════════════
 type Cycle = ReturnType<typeof salaryCycle>;
-function SalaryCycleHero({
-    cycle, allowance, profile, billsRemaining, smart,
-}: {
-    cycle: Cycle;
-    allowance: StateData["allowance"];
-    profile: StateData["profile"];
-    billsRemaining: number;
-    smart: StateData["smartAllowance"];
-}) {
-    // Map pace verdict → UI accent
-    const accentMap: Record<typeof smart.pace.verdict, "good" | "warn" | "bad" | "good"> = {
-        under: "good",
-        "on-track": "good",
-        watch: "warn",
-        over: "bad",
-    };
-    const accent = accentMap[smart.pace.verdict];
+// ════════════════════════════════════════════════════════════════════
+//  WEEKLY HERO — the money block you can't ignore
+//  Weekly is the primary lens (missing a day or two shouldn't break the
+//  system). Shows what's left to spend this week, what's safe today, and
+//  the four numbers that matter — income, spent this week, money left
+//  this month, debt due. Plain language, no jargon.
+// ════════════════════════════════════════════════════════════════════
+function WeeklyHero({ weekly, cycle }: { weekly: StateData["weekly"]; cycle: Cycle }) {
+    const accentMap = {
+        under: "good", "on-track": "good", watch: "warn", over: "bad",
+    } as const;
+    const accent = accentMap[weekly.verdict];
 
-    const verdictLabel: Record<typeof smart.pace.verdict, string> = {
-        under: "Under pace",
+    const verdictLabel: Record<typeof weekly.verdict, string> = {
+        under: "Money to spare",
         "on-track": "On track",
-        watch: "Watch pace",
-        over: "Burning fast",
+        watch: "Spending fast",
+        over: "Over budget",
     };
 
     const heroGradient = accent === "bad"
@@ -284,59 +279,73 @@ function SalaryCycleHero({
             ? "from-yellow-500/15 via-yellow-500/5 to-transparent"
             : "from-emerald-500/15 via-emerald-500/5 to-transparent";
 
+    const weekStart = new Date(weekly.weekStart);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const fmtDay = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+    const rangeStr = `${fmtDay(weekStart)} – ${fmtDay(weekEnd)}`;
+
+    const safeColor = accent === "bad" ? "text-red-400" : accent === "warn" ? "text-yellow-300" : "text-emerald-400";
+
     return (
         <Surface elevated className="overflow-hidden relative">
             <div className={`absolute inset-0 bg-gradient-to-br ${heroGradient} pointer-events-none`} />
             <div className="relative p-5">
-                {/* Salary cycle context strip */}
+                {/* Week context strip */}
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-500">Salary cycle</span>
+                        <span className="text-xs font-medium text-zinc-300">This week</span>
                         <span className="text-[10px] text-zinc-600">·</span>
-                        <span className="text-xs font-medium text-zinc-300 tabular-nums">
-                            Day {cycle.dayOfCycle} <span className="text-zinc-600">of {cycle.totalDays}</span>
-                        </span>
+                        <span className="text-xs text-zinc-500 tabular-nums">{rangeStr}</span>
                     </div>
                     <Pill color={accent === "good" ? "green" : accent === "warn" ? "yellow" : "red"}>
-                        {verdictLabel[smart.pace.verdict]}
+                        {verdictLabel[weekly.verdict]}
                     </Pill>
                 </div>
 
-                {/* Big number: today's SMART allowance */}
-                <p className="text-[11px] text-zinc-400 uppercase tracking-widest mb-1">You can spend today</p>
+                {/* Big number: money left to spend this week */}
+                <p className="text-[11px] text-zinc-400 uppercase tracking-widest mb-1">Money you can spend this week</p>
                 <div className="flex items-baseline gap-3 mb-1">
-                    <Money value={smart.suggestedToday} large accent={accent} />
-                    <span className="text-xs text-zinc-500">
-                        of {fmt(smart.smartPerDay)} smart-daily
-                    </span>
+                    <Money value={weekly.remaining} large accent={accent} />
+                    <span className="text-xs text-zinc-500">of {fmt(weekly.limit)}</span>
                 </div>
 
-                {/* Why this number — one-line rationale */}
-                <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">{smart.rationale}</p>
-
-                {/* Cycle progress with payday marker */}
-                <div className="relative">
-                    <ProgressBar pct={smart.cycle.pctFlexGone} />
+                {/* Weekly progress with elapsed marker */}
+                <div className="relative mt-3">
+                    <ProgressBar pct={weekly.pctSpent} />
                     <div
-                        className="absolute top-0 h-1.5 w-px bg-white/30"
-                        style={{ left: `${smart.cycle.pctCycleGone}%` }}
-                        title={`You should be at ~${smart.cycle.pctCycleGone}% by now`}
+                        className="absolute top-0 h-1.5 w-px bg-white/40"
+                        style={{ left: `${Math.min(100, weekly.pctElapsed)}%` }}
+                        title={`You're ${weekly.pctElapsed}% through the week`}
                     />
                 </div>
                 <div className="flex justify-between text-[11px] text-zinc-500 mt-2">
-                    <span>{smart.cycle.pctFlexGone}% flex spent · {smart.cycle.pctCycleGone}% cycle gone</span>
-                    <span>Payday in {cycle.daysLeft}d · {cycle.nextSalaryStr}</span>
+                    <span>{fmt(weekly.spent)} spent · {weekly.pctSpent}% of weekly limit</span>
+                    <span>{weekly.daysLeftInWeek} {weekly.daysLeftInWeek === 1 ? "day" : "days"} left</span>
                 </div>
 
-                {/* Quick metrics row */}
-                <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/5">
-                    <Stat label="Income" value={fmtL(profile.income)} />
+                {/* Safe-to-spend-today — the one daily number that still matters */}
+                <div className="mt-4 rounded-xl bg-black/25 border border-white/5 px-4 py-3 flex items-center justify-between">
+                    <div>
+                        <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Safe to spend today</p>
+                        <p className={`text-xl font-bold tabular-nums mt-0.5 ${safeColor}`}>{fmt(weekly.safeToday)}</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Next salary</p>
+                        <p className="text-sm font-medium text-zinc-300 mt-0.5 tabular-nums">{cycle.daysLeft}d · {cycle.nextSalaryStr}</p>
+                    </div>
+                </div>
+
+                {/* The four numbers you can't ignore */}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-3 mt-4 pt-4 border-t border-white/5">
+                    <Stat label="Income this month" value={fmtL(weekly.income)} />
+                    <Stat label="Spent this week" value={fmt(weekly.totalSpent)} />
+                    <Stat label="Money left this month" value={fmt(weekly.moneyLeftMonth)} />
                     <Stat
-                        label="Bills to pay"
-                        value={billsRemaining > 0 ? fmt(billsRemaining) : "All clear"}
-                        subtle={billsRemaining === 0}
+                        label="Debt due"
+                        value={weekly.debtDue > 0 ? fmt(weekly.debtDue) : "All clear"}
+                        subtle={weekly.debtDue === 0}
                     />
-                    <Stat label="Flex left" value={fmt(smart.safelyAvailableFlex)} subtle />
                 </div>
             </div>
         </Surface>
@@ -718,14 +727,14 @@ function AddExpenseSheet({ onClose }: { onClose: () => void }) {
                     <div>
                         <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Amount</label>
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-lg">₹</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-2xl font-semibold leading-none pointer-events-none">₹</span>
                             <Input
                                 type="number"
                                 inputMode="decimal"
                                 placeholder="0"
                                 value={amount}
                                 onChange={e => setAmount(e.target.value)}
-                                className="!pl-8 !text-2xl !font-semibold !tabular-nums"
+                                className="!pl-11 !text-2xl !font-semibold !tabular-nums !leading-none"
                                 autoFocus
                             />
                         </div>
@@ -792,7 +801,6 @@ function DebtsTab({ state }: { state: StateData }) {
         },
         onError: () => toast("Could not record payment", "error"),
     });
-    const [amounts, setAmounts] = useState<Record<string, string>>({});
 
     if (isLoading) return <Loading label="Loading debts…" />;
     const debts: Debt[] = data?.debts ?? [];
@@ -843,41 +851,13 @@ function DebtsTab({ state }: { state: StateData }) {
                     </div>
                     <div className="space-y-2">
                         {g.debts.map(d => (
-                            <Surface key={d.id} className={`p-4 ${d.id === avalancheTarget?.id ? "!border-yellow-500/30" : ""}`}>
-                                <div className="flex items-start justify-between mb-3">
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-medium text-zinc-100 truncate flex items-center gap-2">
-                                            {d.name}
-                                            {d.id === avalancheTarget?.id && <Pill color="yellow">priority</Pill>}
-                                        </p>
-                                        <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
-                                            {d.rate > 0 && <span>{d.rate}% p.a.</span>}
-                                            {d.emi > 0 && <span>· EMI {fmt(d.emi)}</span>}
-                                        </div>
-                                    </div>
-                                    <p className="text-lg font-bold text-white tabular-nums shrink-0">{fmt(d.balance)}</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Input
-                                        type="number"
-                                        placeholder={`${fmt(d.emi || Math.round(d.balance / 6))}`}
-                                        value={amounts[d.id] ?? ""}
-                                        onChange={e => setAmounts(p => ({ ...p, [d.id]: e.target.value }))}
-                                        className="!py-2.5"
-                                    />
-                                    <button
-                                        onClick={() => {
-                                            const amt = Number(amounts[d.id]);
-                                            if (!amt) return;
-                                            pay.mutate({ debtId: d.id, amount: amt });
-                                            setAmounts(p => ({ ...p, [d.id]: "" }));
-                                        }}
-                                        className="btn-success shrink-0"
-                                    >
-                                        Pay
-                                    </button>
-                                </div>
-                            </Surface>
+                            <DebtCard
+                                key={d.id}
+                                debt={d}
+                                isPriority={d.id === avalancheTarget?.id}
+                                pending={pay.isPending}
+                                onPay={(body) => pay.mutate(body)}
+                            />
                         ))}
                     </div>
                 </section>
@@ -890,13 +870,135 @@ function DebtsTab({ state }: { state: StateData }) {
                         {settled.map(d => (
                             <div key={d.id} className="flex items-center justify-between px-4 py-2.5">
                                 <span className="text-sm text-zinc-500 line-through">{d.name}</span>
-                                <Pill color="green">Paid off</Pill>
+                                <Pill color="green">{d.status === "foreclosed" ? "Foreclosed" : "Paid off"}</Pill>
                             </div>
                         ))}
                     </Surface>
                 </section>
             )}
         </div>
+    );
+}
+
+// ─── Debt card — EMI reality + real-life payment actions ──────────
+function ordinal(n: number): string {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
+
+function QuickPay({ label, onClick, disabled, tone = "default" }: {
+    label: string; onClick: () => void; disabled?: boolean; tone?: "default" | "danger";
+}) {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            className={`text-[11px] font-medium px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-40 active:scale-95 ${
+                tone === "danger"
+                    ? "border-red-500/25 text-red-300 hover:bg-red-500/10"
+                    : "border-white/10 text-zinc-200 hover:bg-white/[0.06]"
+            }`}
+        >
+            {label}
+        </button>
+    );
+}
+
+function DebtCard({ debt: d, isPriority, onPay, pending }: {
+    debt: Debt;
+    isPriority: boolean;
+    onPay: (body: Record<string, unknown>) => void;
+    pending: boolean;
+}) {
+    const [amt, setAmt] = useState("");
+    const isCC = d.type === "cc";
+    const isFriend = d.type === "friend";
+    const isLoan = d.type === "formal";
+
+    // Meta line — the EMI-reality facts the user asked to always see.
+    const meta: string[] = [];
+    if (d.rate > 0) meta.push(`${d.rate}% p.a.`);
+    if (d.emi > 0) meta.push(`EMI ${fmt(d.emi)}`);
+    if (d.dueDay) meta.push(`due ${ordinal(d.dueDay)}`);
+    if (d.tenureMonths) meta.push(`${d.tenureMonths}mo left`);
+
+    const payCustom = () => {
+        const v = Number(amt);
+        if (!v) return;
+        onPay({ debtId: d.id, amount: v, kind: isLoan ? "extra" : "partial" });
+        setAmt("");
+    };
+
+    return (
+        <Surface className={`p-4 ${isPriority ? "!border-yellow-500/30" : ""}`}>
+            <div className="flex items-start justify-between mb-2">
+                <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-100 truncate flex items-center gap-2">
+                        {d.name}
+                        {isPriority && <Pill color="yellow">priority</Pill>}
+                    </p>
+                    {meta.length > 0 && <p className="text-[11px] text-zinc-500 mt-0.5">{meta.join(" · ")}</p>}
+                </div>
+                <div className="text-right shrink-0 pl-3">
+                    <p className="text-lg font-bold text-white tabular-nums leading-none">{fmt(d.balance)}</p>
+                    <p className="text-[10px] text-zinc-600 mt-1">outstanding</p>
+                </div>
+            </div>
+
+            {/* Credit-card statement strip */}
+            {isCC && (d.minDue != null || d.statementBalance != null) && (
+                <div className="flex flex-wrap gap-1.5 mb-3 text-[11px]">
+                    {d.minDue != null && (
+                        <span className="rounded-md bg-black/30 border border-white/5 px-2 py-1 text-zinc-400">
+                            Min due <span className="text-zinc-200 tabular-nums">{fmt(d.minDue)}</span>
+                        </span>
+                    )}
+                    {d.statementBalance != null && (
+                        <span className="rounded-md bg-black/30 border border-white/5 px-2 py-1 text-zinc-400">
+                            Statement <span className="text-zinc-200 tabular-nums">{fmt(d.statementBalance)}</span>
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {/* Real-life quick actions, by debt type */}
+            <div className="flex flex-wrap gap-1.5 mb-2.5">
+                {isCC && d.minDue ? (
+                    <QuickPay label={`Pay min ${fmt(d.minDue)}`} disabled={pending}
+                        onClick={() => onPay({ debtId: d.id, amount: d.minDue, kind: "min" })} />
+                ) : null}
+                {isCC ? (
+                    <QuickPay label={`Pay full ${fmt(d.statementBalance || d.balance)}`} disabled={pending}
+                        onClick={() => onPay({ debtId: d.id, amount: d.statementBalance || d.balance, kind: "full" })} />
+                ) : null}
+                {isLoan && d.emi > 0 ? (
+                    <QuickPay label={`Pay EMI ${fmt(d.emi)}`} disabled={pending}
+                        onClick={() => onPay({ debtId: d.id, amount: d.emi, kind: "emi" })} />
+                ) : null}
+                {isLoan ? (
+                    <QuickPay label="Foreclose" tone="danger" disabled={pending}
+                        onClick={() => { if (confirm(`Foreclose ${d.name}? This records the full ${fmt(d.balance)} as paid.`)) onPay({ debtId: d.id, kind: "foreclose" }); }} />
+                ) : null}
+                {isFriend ? (
+                    <QuickPay label="Mark settled" tone="danger" disabled={pending}
+                        onClick={() => { if (confirm(`Mark ${d.name} as settled?`)) onPay({ debtId: d.id, kind: "settle" }); }} />
+                ) : null}
+            </div>
+
+            {/* Any other amount → extra (loans) / partial (cards, friends) */}
+            <div className="flex gap-2">
+                <Input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder={isLoan ? "Extra payment" : "Part payment"}
+                    value={amt}
+                    onChange={e => setAmt(e.target.value)}
+                    className="!py-2.5"
+                />
+                <button onClick={payCustom} disabled={pending || !amt} className="btn-success shrink-0">Pay</button>
+            </div>
+        </Surface>
     );
 }
 
@@ -1401,7 +1503,7 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                         <LogoMark size={36} />
                         <div>
-                            <p className="text-[15px] font-semibold text-white leading-tight tracking-tight">Finance OS</p>
+                            <p className="text-[15px] font-semibold text-white leading-tight tracking-tight">Steady</p>
                             <p className="text-[11px] text-zinc-500 leading-tight mt-0.5">{dateStr}</p>
                         </div>
                     </div>

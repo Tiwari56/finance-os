@@ -185,7 +185,7 @@ function toText(daily, weekly, now) {
   const vsSign = weekly.vsExpected >= 0 ? "+" : "";
 
   const lines = [
-    `📊 *Finance OS — ${now.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}*`,
+    `📊 *Steady — ${now.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}*`,
     ``,
     `━━━ TODAY ━━━`,
     `💰 Allowance left: *${fmt(daily.allowance.remaining)}* of ${fmt(daily.allowance.perDay)}`,
@@ -247,7 +247,7 @@ function toText(daily, weekly, now) {
   lines.push(
     `💀 Total debt: *${fmtL(daily.totalDebt)}*`,
     ``,
-    `_Finance OS · ${now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}_`,
+    `_Steady · ${now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}_`,
   );
 
   return lines.join("\n");

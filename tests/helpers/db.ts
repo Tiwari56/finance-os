@@ -97,7 +97,16 @@ CREATE TABLE IF NOT EXISTS debts (
   emi REAL NOT NULL DEFAULT 0,
   color TEXT NOT NULL DEFAULT '#9F77DD',
   type TEXT NOT NULL DEFAULT 'friend',
-  "order" INTEGER NOT NULL DEFAULT 0
+  "order" INTEGER NOT NULL DEFAULT 0,
+  principal REAL NOT NULL DEFAULT 0,
+  due_day INTEGER,
+  tenure_months INTEGER,
+  opened_ts INTEGER,
+  status TEXT NOT NULL DEFAULT 'active',
+  last_paid_ts INTEGER,
+  credit_limit REAL,
+  min_due REAL,
+  statement_balance REAL
 );
 CREATE TABLE IF NOT EXISTS debt_payments (
   id TEXT PRIMARY KEY,

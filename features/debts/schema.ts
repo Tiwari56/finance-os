@@ -10,12 +10,25 @@ export const debts = sqliteTable("debts", {
     id: text("id").primaryKey(),
     userId: text("user_id"),
     name: text("name").notNull(),
-    balance: real("balance").notNull().default(0),
-    rate: real("rate").notNull().default(0),     // annual interest %
-    emi: real("emi").notNull().default(0),      // monthly minimum payment
+    balance: real("balance").notNull().default(0),  // current outstanding
+    rate: real("rate").notNull().default(0),        // annual interest % (ROI)
+    emi: real("emi").notNull().default(0),          // monthly EMI / minimum payment
     color: text("color").notNull().default("#9F77DD"),
     type: text("type").notNull().default("friend"), // "cc" | "formal" | "friend"
     order: integer("order").notNull().default(0),
+
+    // ── EMI-reality fields (added for real loan tracking) ──────────
+    principal: real("principal").notNull().default(0),    // original loan amount
+    dueDay: integer("due_day"),                           // EMI / statement due day 1-28 (null = unknown)
+    tenureMonths: integer("tenure_months"),               // total tenure (null = revolving/unknown)
+    openedTs: integer("opened_ts"),                       // when the loan started
+    status: text("status").notNull().default("active"),   // "active" | "foreclosed" | "settled"
+    lastPaidTs: integer("last_paid_ts"),                  // last payment timestamp
+
+    // ── Credit-card specific (null for loans) ──────────────────────
+    creditLimit: real("credit_limit"),                    // total card limit
+    minDue: real("min_due"),                              // current statement minimum due
+    statementBalance: real("statement_balance"),          // full statement amount owed
 });
 
 export const debtPayments = sqliteTable(

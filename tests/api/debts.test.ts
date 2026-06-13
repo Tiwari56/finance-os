@@ -103,6 +103,52 @@ describe("debts API", () => {
         });
     });
 
+    describe("payDebt() — real-life kinds", () => {
+        it("foreclose clears the full balance and marks status", async () => {
+            const r1 = await upsertDebt(post({ name: "Car loan", balance: 50000, rate: 9, emi: 5000, type: "formal" }));
+            const { id: debtId } = await r1.json();
+            const res = await payDebt(post({ debtId, kind: "foreclose" }));
+            const data = await res.json();
+            expect(data.ok).toBe(true);
+            expect(data.newBalance).toBe(0);
+            expect(data.status).toBe("foreclosed");
+        });
+
+        it("settle clears a friend debt without an amount", async () => {
+            const r1 = await upsertDebt(post({ name: "Rahul", balance: 3000, rate: 0, emi: 0, type: "friend" }));
+            const { id: debtId } = await r1.json();
+            const res = await payDebt(post({ debtId, kind: "settle" }));
+            const data = await res.json();
+            expect(data.newBalance).toBe(0);
+            expect(data.status).toBe("settled");
+        });
+
+        it("paying the minimum due zeroes min_due and reduces balance", async () => {
+            const r1 = await upsertDebt(post({ name: "Amex", balance: 40000, rate: 42, emi: 0, type: "cc", minDue: 2000, statementBalance: 40000 }));
+            const { id: debtId } = await r1.json();
+            await payDebt(post({ debtId, amount: 2000, kind: "min" }));
+            const list = await (await listDebts(new Request("http://localhost"))).json();
+            expect(list.debts[0].minDue).toBe(0);
+            expect(list.debts[0].balance).toBe(38000);
+        });
+
+        it("auto-settles when a part payment clears the balance", async () => {
+            const r1 = await upsertDebt(post({ name: "Tiny", balance: 1000, rate: 0, emi: 0, type: "friend" }));
+            const { id: debtId } = await r1.json();
+            const res = await payDebt(post({ debtId, amount: 1000, kind: "partial" }));
+            const data = await res.json();
+            expect(data.status).toBe("settled");
+        });
+
+        it("new loan defaults principal to its starting balance", async () => {
+            const r1 = await upsertDebt(post({ name: "Bike loan", balance: 60000, rate: 11, emi: 3000, type: "formal" }));
+            const { id } = await r1.json();
+            const list = await (await listDebts(new Request("http://localhost"))).json();
+            const d = list.debts.find((x: { id: string; principal: number }) => x.id === id);
+            expect(d.principal).toBe(60000);
+        });
+    });
+
     describe("deleteDebt()", () => {
         it("removes a debt", async () => {
             const r = await upsertDebt(post({ name: "X", balance: 1000, rate: 0, emi: 0, type: "friend" }));

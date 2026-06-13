@@ -41,6 +41,14 @@ const UpsertBody = z.object({
     color: z.string().optional().default("#9F77DD"),
     type: z.enum(["cc", "formal", "friend"]).default("friend"),
     order: z.number().optional().default(0),
+    // EMI-reality fields (all optional — wizard / edit form may send them)
+    principal: z.number().min(0).optional(),
+    dueDay: z.number().int().min(1).max(28).optional(),
+    tenureMonths: z.number().int().min(0).optional(),
+    openedTs: z.number().optional(),
+    creditLimit: z.number().min(0).optional(),
+    minDue: z.number().min(0).optional(),
+    statementBalance: z.number().min(0).optional(),
 });
 
 export async function upsertDebt(req: Request): Promise<Response> {
@@ -63,14 +71,36 @@ export async function upsertDebt(req: Request): Promise<Response> {
     }
 
     const id = "debt_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
-    await db.insert(debts).values({ id, userId, ...data });
+    // New loans: default original amount to the current balance if not given.
+    await db.insert(debts).values({
+        id, userId,
+        status: "active",
+        ...data,
+        principal: data.principal ?? data.balance,
+    });
     return Response.json({ ok: true, id });
 }
 
 // ─── Pay ──────────────────────────────────────────────────────────
+//  Real-life payments aren't "pay off the whole thing". `kind` captures
+//  what actually happened so the balance, status and recommendations
+//  stay honest:
+//    emi      — scheduled EMI / monthly instalment
+//    min      — credit-card minimum due
+//    full     — full statement / clear the card
+//    partial  — any ad-hoc part payment
+//    extra    — extra attack on top of the EMI (avalanche)
+//    foreclose— close the loan early, balance → 0
+//    settle   — mark a friend/informal debt settled, balance → 0
+const PAY_LABELS: Record<string, string> = {
+    emi: "EMI payment", min: "Minimum due paid", full: "Paid in full",
+    partial: "Part payment", extra: "Extra payment",
+    foreclose: "Foreclosed", settle: "Settled",
+};
 const PayBody = z.object({
     debtId: z.string(),
-    amount: z.number().positive(),
+    amount: z.number().positive().optional(),  // optional for foreclose/settle (uses full balance)
+    kind: z.enum(["emi", "min", "full", "partial", "extra", "foreclose", "settle"]).default("partial"),
     note: z.string().optional(),
     expenseId: z.string().optional(),
     ts: z.number().optional(),
@@ -85,7 +115,7 @@ export async function payDebt(req: Request): Promise<Response> {
     const parsed = PayBody.safeParse(body);
     if (!parsed.success) return Response.json({ ok: false, error: "Invalid body" }, { status: 400 });
 
-    const { debtId, amount, note, expenseId, ts } = parsed.data;
+    const { debtId, kind, note, expenseId, ts } = parsed.data;
 
     // Verify ownership before touching anything
     const [debt] = await db.select().from(debts)
@@ -93,12 +123,40 @@ export async function payDebt(req: Request): Promise<Response> {
         .limit(1);
     if (!debt) return Response.json({ ok: false, error: "Debt not found" }, { status: 404 });
 
-    const id = "pay_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
-    await db.insert(debtPayments).values({ id, ts: ts ?? Date.now(), debtId, amount, note, expenseId });
-    const newBalance = Math.max(0, debt.balance - amount);
-    await db.update(debts).set({ balance: newBalance }).where(eq(debts.id, debtId));
+    // foreclose / settle clear the whole balance; everything else needs an amount
+    const closing = kind === "foreclose" || kind === "settle";
+    const amount = closing ? Math.max(0, debt.balance) : parsed.data.amount;
+    if (!amount || amount <= 0) {
+        return Response.json({ ok: false, error: "Amount required" }, { status: 400 });
+    }
 
-    return Response.json({ ok: true, id, newBalance });
+    const payTs = ts ?? Date.now();
+    const newBalance = Math.max(0, debt.balance - amount);
+
+    const id = "pay_" + Date.now() + "_" + Math.random().toString(36).slice(2, 5);
+    await db.insert(debtPayments).values({
+        id, ts: payTs, debtId, amount, note: note ?? PAY_LABELS[kind], expenseId,
+    });
+
+    // Status: explicit for close actions; auto-settle when balance hits 0.
+    const status = kind === "foreclose" ? "foreclosed"
+        : kind === "settle" ? "settled"
+        : newBalance <= 0 ? "settled"
+        : debt.status;
+
+    // Credit-card statement tracking: clearing in full zeroes the statement;
+    // paying the minimum satisfies the min-due for this cycle.
+    const minDuePatch =
+        kind === "full" ? { minDue: 0, statementBalance: 0 }
+        : kind === "min" ? { minDue: 0 }
+        : debt.minDue != null ? { minDue: Math.max(0, debt.minDue - amount) }
+        : {};
+
+    await db.update(debts)
+        .set({ balance: newBalance, status, lastPaidTs: payTs, ...minDuePatch })
+        .where(eq(debts.id, debtId));
+
+    return Response.json({ ok: true, id, newBalance, status });
 }
 
 // ─── Delete ───────────────────────────────────────────────────────

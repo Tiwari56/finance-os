@@ -50,11 +50,22 @@ export async function GET() {
         const dayStart   = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const monthKey   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
+        // ─── Week window (Monday-based, the primary lens) ─────────
+        const weekStartDt = (() => {
+            const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const mondayOffset = (d.getDay() + 6) % 7;   // Sun=6, Mon=0 …
+            d.setDate(d.getDate() - mondayOffset);
+            return d;
+        })();
+        const weekStart      = weekStartDt.getTime();
+        const dayIndexInWeek = Math.floor((dayStart - weekStart) / 86400000); // 0..6
+        const daysLeftInWeek = Math.max(1, 7 - dayIndexInWeek);               // incl. today
+
         // ─── Parallel reads ───────────────────────────────────────
         const [
             profileRows, flagRows,
             allEnvelopes, allDebts, allBills, activeGoals,
-            recentExpenses, monthExpenses, todayExpenses,
+            recentExpenses, monthExpenses, todayExpenses, weekExpenses,
             monthBillPayments, recentDebtPayments,
             allIous,
         ] = await Promise.all([
@@ -67,6 +78,7 @@ export async function GET() {
             db.select().from(expenses).where(eq(expenses.userId, userId as string)).orderBy(desc(expenses.ts)).limit(50),
             db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, monthStart))),
             db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, dayStart))),
+            db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, weekStart))),
             db.select({ ...getTableColumns(billPayments) })
                 .from(billPayments)
                 .innerJoin(bills, eq(billPayments.billId, bills.id))
@@ -103,6 +115,9 @@ export async function GET() {
         const todayFlexSpent = sum(todayExpenses, e => flexCatSet.has(e.category));
         const todayTotal     = todayExpenses.reduce((s, e) => s + Number(e.amount), 0);
         const cycleFlexSpent = sum(cycleExpenses, e => flexCatSet.has(e.category));
+        const weekFlexSpent  = sum(weekExpenses, e => flexCatSet.has(e.category));
+        const weekTotalSpent = weekExpenses.reduce((s, e) => s + Number(e.amount), 0);
+        const monthTotalSpent = monthExpenses.reduce((s, e) => s + Number(e.amount), 0);
 
         // ─── Bills + EMI remaining ───────────────────────────────
         const paidBillIds = new Set(monthBillPayments.map(p => p.billId));
@@ -185,6 +200,26 @@ export async function GET() {
 
         const netWealth = income - totalOutstanding + totalIouOpen;
 
+        // ─── Weekly view (the primary lens) ───────────────────────
+        const cycleDays   = smart.cycle.daysInCycle;
+        const weeklyLimit = Math.round((flexBudget * 7) / Math.max(1, cycleDays));
+        const weekRemaining = Math.max(0, weeklyLimit - weekFlexSpent);
+        const safeToday   = Math.round(weekRemaining / daysLeftInWeek);
+        const pctWeekSpent   = weeklyLimit > 0 ? Math.round((weekFlexSpent / weeklyLimit) * 100) : 0;
+        const pctWeekElapsed = Math.round(((dayIndexInWeek + 1) / 7) * 100);
+        const weekOverpace   = pctWeekSpent - pctWeekElapsed;
+        const weekVerdict: "under" | "on-track" | "watch" | "over" =
+            weekOverpace > 25 ? "over"
+            : weekOverpace > 12 ? "watch"
+            : weekOverpace < -15 ? "under"
+            : "on-track";
+        const weekDebtPaid = recentDebtPayments
+            .filter(p => p.ts >= weekStart)
+            .reduce((s, p) => s + Number(p.amount), 0);
+        // "Available cash" proxy: income minus everything already spent
+        // and still owed (bills + EMI) this month.
+        const moneyLeftMonth = Math.max(0, income - monthTotalSpent - billsRemaining - debtEmiRemaining);
+
         return NextResponse.json({
             ok: true,
             profile: userProfile,
@@ -196,9 +231,29 @@ export async function GET() {
                 flexBudget,
             },
             smartAllowance: smart,
+            weekly: {
+                weekStart:      weekStartDt.toISOString(),
+                limit:          weeklyLimit,
+                spent:          weekFlexSpent,
+                totalSpent:     weekTotalSpent,
+                remaining:      weekRemaining,
+                safeToday,
+                pctSpent:       pctWeekSpent,
+                pctElapsed:     pctWeekElapsed,
+                overpaceBy:     weekOverpace,
+                verdict:        weekVerdict,
+                daysLeftInWeek,
+                debtPaid:       weekDebtPaid,
+                // headline numbers the dashboard surfaces up top
+                income,
+                moneyLeftMonth,
+                billsRemaining,
+                debtDue:        debtEmiRemaining,
+                spentThisMonth: monthTotalSpent,
+            },
             expenses: {
                 recent: recentExpenses,
-                monthTotal: monthExpenses.reduce((s, e) => s + Number(e.amount), 0),
+                monthTotal: monthTotalSpent,
                 todayTotal,
             },
             bills: billsWithStatus,

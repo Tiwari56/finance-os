@@ -20,6 +20,16 @@ export interface Bill {
 export interface Debt {
     id: string; name: string; balance: number; rate: number; emi: number;
     type: string; color: string;
+    // EMI-reality fields (optional — older rows may be null)
+    principal?: number | null;
+    dueDay?: number | null;
+    tenureMonths?: number | null;
+    openedTs?: number | null;
+    status?: string | null;
+    lastPaidTs?: number | null;
+    creditLimit?: number | null;
+    minDue?: number | null;
+    statementBalance?: number | null;
 }
 export interface Expense {
     id: string; ts: number; amount: number; category: string;
@@ -81,12 +91,33 @@ export interface OverviewData {
     debtEmiRemaining: number;
 }
 
+export interface WeeklyData {
+    weekStart: string;
+    limit: number;
+    spent: number;
+    totalSpent: number;
+    remaining: number;
+    safeToday: number;
+    pctSpent: number;
+    pctElapsed: number;
+    overpaceBy: number;
+    verdict: "under" | "on-track" | "watch" | "over";
+    daysLeftInWeek: number;
+    debtPaid: number;
+    income: number;
+    moneyLeftMonth: number;
+    billsRemaining: number;
+    debtDue: number;
+    spentThisMonth: number;
+}
+
 export interface StateData {
     ok: boolean; error?: string;
     profile: { name: string; income: number; salaryDay: number };
     flags: { setupComplete: boolean; salaryReceived: boolean };
     allowance: AllowanceData;
     smartAllowance: SmartAllowance;
+    weekly: WeeklyData;
     envelopes: Envelope[];
     expenses: { recent: Expense[]; monthTotal: number; todayTotal: number };
     bills: Bill[];
