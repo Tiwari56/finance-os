@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSession, signOut } from "next-auth/react";
 import { fmt, fmtL } from "@/lib/format";
@@ -605,8 +606,8 @@ function PayBillSheet({ bill, onClose, onSubmit }: {
     const [amount, setAmount] = useState(String(bill.amount));
     const partial = Number(amount) > 0 && Number(amount) < bill.amount;
 
-    return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 flex items-end fade-in" onClick={onClose}>
+    return createPortal(
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-end fade-in" onClick={onClose}>
             <div className="surface-elev rounded-t-3xl w-full max-w-xl mx-auto p-6 space-y-4 slide-up" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
                     <div>
@@ -653,7 +654,8 @@ function PayBillSheet({ bill, onClose, onSubmit }: {
                     {partial ? "Log partial payment" : "Mark fully paid"}
                 </button>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -692,9 +694,9 @@ function AddExpenseSheet({ onClose }: { onClose: () => void }) {
     // Fix: the sheet must (a) stop short of the bottom nav so the button
     //  isn't covered, (b) be scrollable internally on small viewports, and
     //  (c) account for the iPhone safe-area inset.
-    return (
+    return createPortal(
         <div
-            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-end justify-center fade-in"
+            className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-end justify-center fade-in"
             onClick={onClose}
             role="dialog"
             aria-modal="true"
@@ -780,7 +782,8 @@ function AddExpenseSheet({ onClose }: { onClose: () => void }) {
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -1118,8 +1121,8 @@ function DebtFormSheet({ debt, onClose }: { debt: Debt | null; onClose: () => vo
         </div>
     );
 
-    return (
-        <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-end justify-center fade-in"
+    return createPortal(
+        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-end justify-center fade-in"
             onClick={onClose} role="dialog" aria-modal="true">
             <div className="surface-elev w-full max-w-xl rounded-t-3xl slide-up flex flex-col"
                 style={{ maxHeight: "min(92dvh, 760px)", paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
@@ -1215,7 +1218,8 @@ function DebtFormSheet({ debt, onClose }: { debt: Debt | null; onClose: () => vo
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
