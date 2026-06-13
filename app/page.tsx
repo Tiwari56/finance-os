@@ -1514,11 +1514,11 @@ function OverviewTab({ data }: { data: StateData }) {
 
             {/* ── Helpful explainer ──────────────────────────── */}
             <Surface className="p-4 bg-gradient-to-br from-blue-500/5 to-transparent">
-                <p className="text-[11px] uppercase tracking-wider text-blue-300 font-medium mb-1.5">How "spend today" is calculated</p>
+                <p className="text-[11px] uppercase tracking-wider text-blue-300 font-medium mb-1.5">How "safe to spend" is worked out</p>
                 <p className="text-[12px] text-zinc-400 leading-relaxed">
-                    We start from your flex budget (Food + Freedom envelopes), divide what's left by the days remaining in your salary cycle,
-                    then adjust based on your pace so far. If you're burning fast we trim today's limit; if you're under-spending we relax it.
-                    Bills, debt EMIs and SIPs are deducted separately so they never eat into your daily allowance.
+                    We take your weekly spending money (your Food and Fun budgets), subtract what you've already spent this week, and divide
+                    the rest across the days left — so you always know what's safe today. Spend fast and it tightens; spend slow and it eases up.
+                    Rent, bills and debt EMIs are kept separate, so they never eat into your everyday spending.
                 </p>
             </Surface>
 
@@ -1703,6 +1703,217 @@ const TABS = [
 
 type TabId = typeof TABS[number]["id"];
 
+// ════════════════════════════════════════════════════════════════════
+//  SETUP WIZARD
+//  One-time, skippable, guided onboarding for brand-new accounts:
+//  income → loans/cards → spending & savings → done. Writes through the
+//  existing profile / debts / envelopes APIs, then flips setupComplete.
+// ════════════════════════════════════════════════════════════════════
+function WizardField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+    return (
+        <div>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">{label}</label>
+            {children}
+            {hint && <p className="text-[11px] text-zinc-600 mt-1.5 leading-relaxed">{hint}</p>}
+        </div>
+    );
+}
+
+function SetupWizard({ data }: { data: StateData }) {
+    const qc = useQueryClient();
+    const toast = useToast();
+    const [step, setStep] = useState(0);
+    const [saving, setSaving] = useState(false);
+
+    const num = (s: string) => { const n = Number(s); return Number.isFinite(n) ? n : 0; };
+
+    // Step 1 — income
+    const [income, setIncome] = useState(data.profile.income ? String(data.profile.income) : "");
+    const [salaryDay, setSalaryDay] = useState(String(data.profile.salaryDay || 1));
+
+    // Step 3 — spending & savings (defaults derived from seeded envelopes)
+    const envByKey = (k: string) => data.envelopes.find(e => (e.key ?? e.id) === k);
+    const foodEnv = envByKey("food");
+    const funEnv = envByKey("freedom");
+    const sipEnv = envByKey("sip");
+    const seededWeekly = Math.round((((foodEnv?.amount ?? 0) + (funEnv?.amount ?? 0)) * 12) / 52);
+    const [weekly, setWeekly] = useState(seededWeekly ? String(seededWeekly) : "");
+    const [savings, setSavings] = useState(sipEnv?.amount ? String(sipEnv.amount) : "");
+
+    // Step 2 — debts (live list, added via the same guided form)
+    const { data: debtData } = useQuery({ queryKey: ["debts"], queryFn: () => apiFetch("/api/debts/list") });
+    const debts: Debt[] = debtData?.debts ?? [];
+    const [showDebtForm, setShowDebtForm] = useState(false);
+
+    const STEPS = ["Income", "Debts", "Spending", "Done"];
+
+    const finish = async () => {
+        setSaving(true);
+        try {
+            await apiPost("/api/profile/update", {
+                income: num(income) || data.profile.income || 100000,
+                salaryDay: Math.min(28, Math.max(1, num(salaryDay) || 1)),
+            });
+            const monthlySpend = Math.round((num(weekly) * 52) / 12);
+            if (monthlySpend > 0 && foodEnv && funEnv) {
+                await apiPost("/api/envelopes/update", { id: foodEnv.id, amount: Math.round(monthlySpend * 0.5) });
+                await apiPost("/api/envelopes/update", { id: funEnv.id, amount: Math.round(monthlySpend * 0.5) });
+            }
+            if (num(savings) > 0 && sipEnv) {
+                await apiPost("/api/envelopes/update", { id: sipEnv.id, amount: num(savings) });
+            }
+            await apiPost("/api/setup/complete", {});
+            qc.invalidateQueries({ queryKey: ["state"] });
+            // setupComplete flips → this wizard unmounts and the app renders.
+        } catch {
+            toast("Couldn't save your setup — please try again", "error");
+            setSaving(false);
+        }
+    };
+
+    const skip = async () => {
+        setSaving(true);
+        try {
+            await apiPost("/api/setup/complete", {});
+            qc.invalidateQueries({ queryKey: ["state"] });
+        } catch { setSaving(false); }
+    };
+
+    const rupee = (val: string, set: (s: string) => void, placeholder = "0") => (
+        <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-lg font-medium pointer-events-none">₹</span>
+            <Input type="number" inputMode="decimal" placeholder={placeholder} value={val}
+                onChange={e => set(e.target.value)} className="!pl-9 !text-lg !font-semibold !tabular-nums" />
+        </div>
+    );
+
+    const canNext = step === 0 ? num(income) > 0 : true;
+
+    return (
+        <div className="min-h-screen relative flex flex-col max-w-xl mx-auto px-5 pt-8 pb-6">
+            {/* header */}
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2.5">
+                    <LogoMark size={32} />
+                    <span className="text-sm font-semibold text-white">Finance OS</span>
+                </div>
+                {step < 3 && (
+                    <button onClick={skip} disabled={saving} className="text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors">
+                        Skip setup
+                    </button>
+                )}
+            </div>
+
+            {/* progress */}
+            <div className="flex items-center gap-1.5 mb-7">
+                {STEPS.map((s, i) => (
+                    <div key={s} className={`h-1 flex-1 rounded-full transition-colors ${i <= step ? "bg-[#5b7cfa]" : "bg-white/10"}`} />
+                ))}
+            </div>
+
+            <div className="flex-1">
+                {/* STEP 1 — INCOME */}
+                {step === 0 && (
+                    <div className="slide-up space-y-5">
+                        <div>
+                            <h1 className="text-2xl font-semibold text-white tracking-tight">First, your income</h1>
+                            <p className="text-sm text-zinc-400 mt-1.5 leading-relaxed">This is the engine of everything — your weekly budget and pay cycle are built from it.</p>
+                        </div>
+                        <WizardField label="Monthly take-home pay" hint="What actually lands in your account each month, after tax.">
+                            {rupee(income, setIncome, "1,00,000")}
+                        </WizardField>
+                        <WizardField label="Which day do you get paid?" hint="Day of the month (1–28). We use it to track each salary cycle.">
+                            <Input type="number" inputMode="numeric" min={1} max={28} placeholder="1" value={salaryDay}
+                                onChange={e => setSalaryDay(e.target.value)} className="!tabular-nums" />
+                        </WizardField>
+                    </div>
+                )}
+
+                {/* STEP 2 — DEBTS */}
+                {step === 1 && (
+                    <div className="slide-up space-y-5">
+                        <div>
+                            <h1 className="text-2xl font-semibold text-white tracking-tight">Your loans & cards</h1>
+                            <p className="text-sm text-zinc-400 mt-1.5 leading-relaxed">Add what you owe and Finance OS builds a payoff plan and reminds you before each due date. You can skip and add later.</p>
+                        </div>
+                        {debts.length > 0 && (
+                            <div className="space-y-2">
+                                {debts.map(d => (
+                                    <div key={d.id} className="flex items-center justify-between rounded-xl bg-black/20 border border-white/5 px-4 py-3">
+                                        <div className="min-w-0">
+                                            <p className="text-sm text-zinc-200 truncate">{d.name}</p>
+                                            <p className="text-[11px] text-zinc-500">
+                                                {d.type === "cc" ? "Credit card" : d.type === "formal" ? "Loan" : "Person"}
+                                                {d.rate > 0 ? ` · ${d.rate}% p.a.` : ""}
+                                            </p>
+                                        </div>
+                                        <span className="text-sm font-semibold text-white tabular-nums shrink-0">{fmt(d.balance)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <button onClick={() => setShowDebtForm(true)}
+                            className="w-full rounded-xl border border-dashed border-white/15 hover:border-white/30 text-zinc-300 py-3.5 text-sm font-medium transition-colors inline-flex items-center justify-center gap-2">
+                            <Icon name="plus" size={16} strokeWidth={2.2} /> {debts.length > 0 ? "Add another" : "Add a loan or card"}
+                        </button>
+                        {debts.length === 0 && <p className="text-center text-[12px] text-zinc-600">No debt? Lucky you — just tap Next.</p>}
+                    </div>
+                )}
+
+                {/* STEP 3 — SPENDING & SAVINGS */}
+                {step === 2 && (
+                    <div className="slide-up space-y-5">
+                        <div>
+                            <h1 className="text-2xl font-semibold text-white tracking-tight">Spending & savings</h1>
+                            <p className="text-sm text-zinc-400 mt-1.5 leading-relaxed">Two numbers that keep you on track. Rough guesses are fine — you can change them anytime.</p>
+                        </div>
+                        <WizardField label="Weekly spending money" hint="For everyday things — food, eating out, fun, shopping. This becomes your weekly limit.">
+                            {rupee(weekly, setWeekly, "5,000")}
+                        </WizardField>
+                        <WizardField label="Monthly savings goal" hint="How much you want to set aside or invest each month. Optional.">
+                            {rupee(savings, setSavings, "10,000")}
+                        </WizardField>
+                    </div>
+                )}
+
+                {/* STEP 4 — DONE */}
+                {step === 3 && (
+                    <div className="slide-up space-y-5 text-center pt-6">
+                        <span className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-300">
+                            <Icon name="check" size={30} strokeWidth={2.4} />
+                        </span>
+                        <div>
+                            <h1 className="text-2xl font-semibold text-white tracking-tight">You're all set</h1>
+                            <p className="text-sm text-zinc-400 mt-1.5 leading-relaxed max-w-sm mx-auto">
+                                Finance OS will now show what's safe to spend, track your debts, and nudge you before bills are due — automatically.
+                            </p>
+                        </div>
+                        <div className="rounded-xl bg-black/20 border border-white/5 px-4 py-3 text-left space-y-2 max-w-sm mx-auto">
+                            <div className="flex justify-between text-sm"><span className="text-zinc-400">Monthly income</span><span className="text-zinc-100 tabular-nums">{fmt(num(income))}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-zinc-400">Weekly spending</span><span className="text-zinc-100 tabular-nums">{weekly ? fmt(num(weekly)) : "—"}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-zinc-400">Debts added</span><span className="text-zinc-100 tabular-nums">{debts.length}</span></div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* footer */}
+            <div className="flex items-center gap-3 pt-6">
+                {step > 0 && (
+                    <button onClick={() => setStep(s => s - 1)} disabled={saving} className="btn-soft !px-5">Back</button>
+                )}
+                {step < 3 ? (
+                    <button onClick={() => setStep(s => s + 1)} disabled={!canNext} className="btn-primary flex-1">Continue</button>
+                ) : (
+                    <button onClick={finish} disabled={saving} className="btn-primary flex-1">{saving ? "Setting up…" : "Start using Finance OS"}</button>
+                )}
+            </div>
+
+            {showDebtForm && <DebtFormSheet debt={null} onClose={() => setShowDebtForm(false)} />}
+        </div>
+    );
+}
+
 export default function Home() {
     const [tab, setTab] = useState<TabId>("week");
     const { data: session } = useSession();
@@ -1715,6 +1926,11 @@ export default function Home() {
     const dbReady = stateData?.ok === true;
     const now = new Date();
     const dateStr = now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" });
+
+    // New accounts go through the one-time guided setup first.
+    if (!isLoading && dbReady && stateData && !stateData.flags.setupComplete) {
+        return <SetupWizard data={stateData} />;
+    }
 
     return (
         <div className="min-h-screen relative">
