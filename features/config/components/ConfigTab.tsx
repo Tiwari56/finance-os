@@ -45,94 +45,129 @@ export function ConfigTab({ data }: { data: StateData }) {
     return (
         <div className="space-y-6 pb-24">
 
-            {/* ── Profile editor ──────────────────────────────────── */}
-            <ProfileSection data={data} />
+            {/* Intro */}
+            <p className="text-[13px] text-zinc-400 leading-relaxed px-1">
+                Set these up once and Finance OS does the rest. Everything here can be changed any time.
+            </p>
 
-            {/* ── Envelopes editor ────────────────────────────────── */}
-            <EnvelopesSection data={data} />
+            {/* ═══ YOUR MONEY ═══ */}
+            <div className="space-y-3">
+                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1">Your money</p>
+                {/* Name, income, salary day — drives the weekly budget & pay cycle */}
+                <ProfileSection data={data} />
+                {/* How the monthly money is split into spending buckets */}
+                <EnvelopesSection data={data} />
+                {/* Recurring monthly bills (rent, EMIs, subscriptions) */}
+                <BillsSection />
+                {/* Pointer: debts are configured on the Debts tab */}
+                <Surface className="p-4 flex items-start gap-3">
+                    <span className="w-9 h-9 rounded-xl bg-white/[0.05] border border-white/[0.06] flex items-center justify-center text-zinc-300 shrink-0">
+                        <Icon name="credit-card" size={18} />
+                    </span>
+                    <div className="min-w-0">
+                        <p className="text-sm font-medium text-zinc-100">Loans &amp; credit cards</p>
+                        <p className="text-[12px] text-zinc-400 mt-0.5 leading-relaxed">
+                            Add and edit your debts — balance, interest rate, EMI and due dates — on the <span className="text-zinc-200 font-medium">Debts</span> tab.
+                        </p>
+                    </div>
+                </Surface>
+            </div>
 
-            {/* ── Bills CRUD ───────────────────────────────────────── */}
-            <BillsSection />
+            {/* ═══ AUTOMATION ═══ */}
+            <div className="space-y-2">
+                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1">Automation</p>
+                <N8nWebhookSection />
+            </div>
 
-            {/* ── System / Integrations Health ─────────────────────── */}
-            <section>
-                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">Integrations</p>
-                <div className="space-y-2">
-                    <IntegrationRow
-                        icon={<Icon name="sparkles" size={18} />}
-                        name="Anthropic Claude (AI Coach)"
-                        envKey="ANTHROPIC_API_KEY"
-                        configured={!!health?.anthropic?.configured}
-                        hint={health?.anthropic?.hint}
-                        testUrl="/api/health?test=anthropic"
-                    />
-                    <IntegrationRow
-                        icon={<Icon name="inbox" size={18} />}
-                        name="Resend (Email reports)"
-                        envKey="RESEND_API_KEY"
-                        configured={!!health?.resend?.configured}
-                        hint={health?.resend?.hint}
-                        extraInfo={health?.resend?.reportEmail ? `Sends to ${health.resend.reportEmail}` : "REPORT_EMAIL not set"}
-                        testUrl="/api/health?test=resend"
-                    />
-                </div>
-            </section>
-
-            {/* ── n8n webhook (per-account secret) ─────────────────── */}
-            <N8nWebhookSection />
-
-            {/* ── Advanced: feature registry (developer detail) ────── */}
+            {/* ═══ ADVANCED (technical / optional — most people can ignore) ═══ */}
             <Collapsible
                 title="Advanced"
-                subtitle={`${features.length} feature modules · endpoints & settings`}
+                subtitle="Optional services, your data & developer info"
                 icon={<Icon name="sliders" size={17} />}
             >
-                {regLoading && <Loading label="Loading feature registry…" />}
-                <div className="space-y-4 pt-2">
-                    {!regLoading && CAT_ORDER.filter(c => byCat[c]?.length).map(cat => (
-                        <section key={cat}>
-                            <div className="flex items-center justify-between px-1 mb-2">
-                                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium">{CAT_META[cat]?.label ?? cat}</p>
-                                <p className="text-[11px] text-zinc-600">{byCat[cat].length} feature{byCat[cat].length > 1 ? "s" : ""}</p>
+                <div className="space-y-6 pt-3">
+
+                    {/* Optional services */}
+                    <section>
+                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1">Optional services</p>
+                        <p className="text-[11px] text-zinc-600 px-1 mt-0.5 mb-2 leading-relaxed">
+                            Extra features that switch on when an API key is added (set by whoever hosts the app).
+                        </p>
+                        <div className="space-y-2">
+                            <IntegrationRow
+                                icon={<Icon name="sparkles" size={18} />}
+                                name="AI Coach"
+                                description="Personalised money insights and a chat coach on the Coach tab."
+                                envKey="ANTHROPIC_API_KEY"
+                                configured={!!health?.anthropic?.configured}
+                                hint={health?.anthropic?.hint}
+                                testUrl="/api/health?test=anthropic"
+                            />
+                            <IntegrationRow
+                                icon={<Icon name="inbox" size={18} />}
+                                name="Email reports"
+                                description="Weekly and daily summaries delivered to your inbox."
+                                envKey="RESEND_API_KEY"
+                                configured={!!health?.resend?.configured}
+                                hint={health?.resend?.hint}
+                                extraInfo={health?.resend?.reportEmail ? `Sends to ${health.resend.reportEmail}` : "Recipient email not set"}
+                                testUrl="/api/health?test=resend"
+                            />
+                        </div>
+                    </section>
+
+                    {/* Data & storage */}
+                    <section>
+                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1">Your data</p>
+                        <p className="text-[11px] text-zinc-600 px-1 mt-0.5 mb-2 leading-relaxed">
+                            Where your information is stored. Nothing to change here — just so you know it's safe.
+                        </p>
+                        <Surface className="p-4 space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-zinc-400">Stored in</span>
+                                <span className="text-zinc-100 font-medium">{health?.storage?.type ?? "—"}</span>
                             </div>
-                            <div className="space-y-2">
-                                {byCat[cat].map(f => <FeatureCard key={f.id} feature={f} />)}
+                            <div className="flex justify-between text-sm">
+                                <span className="text-zinc-400">Saved permanently</span>
+                                <Pill color={health?.storage?.persistent ? "green" : "yellow"}>
+                                    {health?.storage?.persistent ? "Yes" : "No"}
+                                </Pill>
                             </div>
-                        </section>
-                    ))}
+                            {health?.storage?.records && (
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-zinc-400">Records</span>
+                                    <span className="text-zinc-300 tabular-nums text-xs">
+                                        {health.storage.records.expenses} expenses · {health.storage.records.debtPayments} payments
+                                    </span>
+                                </div>
+                            )}
+                        </Surface>
+                    </section>
+
+                    {/* Feature modules (developer) */}
+                    <section>
+                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1">Feature modules</p>
+                        <p className="text-[11px] text-zinc-600 px-1 mt-0.5 mb-2 leading-relaxed">
+                            Every capability in the app and its API endpoints. For developers.
+                        </p>
+                        {regLoading && <Loading label="Loading feature registry…" />}
+                        <div className="space-y-4">
+                            {!regLoading && CAT_ORDER.filter(c => byCat[c]?.length).map(cat => (
+                                <section key={cat}>
+                                    <div className="flex items-center justify-between px-1 mb-2">
+                                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium">{CAT_META[cat]?.label ?? cat}</p>
+                                        <p className="text-[11px] text-zinc-600">{byCat[cat].length} feature{byCat[cat].length > 1 ? "s" : ""}</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {byCat[cat].map(f => <FeatureCard key={f.id} feature={f} />)}
+                                    </div>
+                                </section>
+                            ))}
+                        </div>
+                    </section>
+
                 </div>
             </Collapsible>
-
-            {/* ── Storage ──────────────────────────────────────────── */}
-            <section>
-                <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1 mb-2">Storage</p>
-                <Surface className="p-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">Backend</span>
-                        <span className="text-zinc-100 font-medium">{health?.storage?.type ?? "—"}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">Persistent</span>
-                        <Pill color={health?.storage?.persistent ? "green" : "yellow"}>
-                            {health?.storage?.persistent ? "Yes" : "No"}
-                        </Pill>
-                    </div>
-                    {health?.storage?.records && (
-                        <div className="flex justify-between text-sm">
-                            <span className="text-zinc-400">Records</span>
-                            <span className="text-zinc-300 tabular-nums text-xs">
-                                {health.storage.records.expenses} expenses · {health.storage.records.debtPayments} payments
-                            </span>
-                        </div>
-                    )}
-                    {health?.storage?.filePath && (
-                        <div className="flex justify-between text-sm">
-                            <span className="text-zinc-400">File</span>
-                            <code className="text-[11px] text-zinc-500">{health.storage.filePath}</code>
-                        </div>
-                    )}
-                </Surface>
-            </section>
 
         </div>
     );
@@ -166,7 +201,7 @@ function ProfileSection({ data }: { data: StateData }) {
             <div className="flex items-center justify-between mb-4">
                 <div>
                     <p className="text-sm font-semibold text-zinc-100">Profile</p>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">Drives allowance + envelope calculations</p>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">Your name, monthly take-home pay, and the day you're paid — these set your weekly budget and pay cycle.</p>
                 </div>
             </div>
             <div className="space-y-3">
@@ -221,6 +256,9 @@ function EnvelopesSection({ data }: { data: StateData }) {
                 ? <Pill color="green">Balanced</Pill>
                 : <Pill color={diff > 0 ? "yellow" : "red"}>{diff > 0 ? `+${fmt(diff)} unallocated` : `${fmt(-diff)} over`}</Pill>}
         >
+            <p className="text-[12px] text-zinc-400 leading-relaxed mb-3">
+                Split your monthly income into buckets so every rupee has a job. Set how much goes to each — the total should match your income.
+            </p>
             <div className="divide-y divide-white/5">
                 {data.envelopes.map(e => {
                     const current = amounts[e.id] ?? String(e.amount);
@@ -244,7 +282,7 @@ function EnvelopesSection({ data }: { data: StateData }) {
                 })}
             </div>
             <p className="text-[11px] text-zinc-500 pt-3 mt-2 border-t border-white/5">
-                Tap an amount, edit, and click away to save. <code className="text-zinc-400">food + freedom</code> drives the daily allowance.
+                Tap an amount, edit, and click away to save. Your <span className="text-zinc-400">Food &amp; groceries</span> and <span className="text-zinc-400">Fun &amp; shopping</span> buckets set how much you can safely spend each week.
             </p>
         </Collapsible>
     );
@@ -282,6 +320,9 @@ function BillsSection() {
             icon={<Icon name="receipt" size={17} />}
             badge={<button onClick={(e) => { e.stopPropagation(); setAdding(true); }} className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded-lg hover:bg-blue-500/10">+ Add</button>}
         >
+            <p className="text-[12px] text-zinc-400 leading-relaxed mb-3">
+                Bills that repeat every month — rent, EMIs, subscriptions. Finance OS reminds you before each due date and tracks what's paid.
+            </p>
             {isLoading && <Loading />}
 
             {adding && (
@@ -533,9 +574,9 @@ function N8nWebhookSection() {
 
 // ─── Integration row ───────────────────────────────────────────────
 function IntegrationRow({
-    icon, name, envKey, configured, hint, extraInfo, testUrl,
+    icon, name, description, envKey, configured, hint, extraInfo, testUrl,
 }: {
-    icon: React.ReactNode; name: string; envKey: string;
+    icon: React.ReactNode; name: string; description?: string; envKey: string;
     configured: boolean; hint?: string; extraInfo?: string; testUrl?: string;
 }) {
     const [testing, setTesting] = useState(false);
@@ -562,12 +603,13 @@ function IntegrationRow({
                     <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-zinc-100">{name}</p>
                         <Pill color={configured ? "green" : "yellow"}>
-                            {configured ? "Set" : "Missing"}
+                            {configured ? "On" : "Off"}
                         </Pill>
                     </div>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                        <code className="text-zinc-400">{envKey}</code>
-                        {hint && <span className="text-zinc-600 ml-2">{hint}</span>}
+                    {description && <p className="text-[12px] text-zinc-400 mt-0.5 leading-relaxed">{description}</p>}
+                    <p className="text-[10px] text-zinc-600 mt-1">
+                        Enabled by <code className="text-zinc-500">{envKey}</code>
+                        {hint && <span className="ml-2">· {hint}</span>}
                     </p>
                     {extraInfo && <p className="text-[11px] text-zinc-500 mt-1">{extraInfo}</p>}
                     {result && (
