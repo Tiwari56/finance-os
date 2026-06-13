@@ -203,9 +203,16 @@ export async function GET() {
         // ─── Weekly view (the primary lens) ───────────────────────
         const cycleDays   = smart.cycle.daysInCycle;
         const weeklyLimit = Math.round((flexBudget * 7) / Math.max(1, cycleDays));
-        const weekRemaining = Math.max(0, weeklyLimit - weekFlexSpent);
+
+        // Carry-forward: money already banked into savings this week is no
+        // longer spendable. Resets when the week rolls over.
+        const weekKeyStr = `${weekStartDt.getFullYear()}-${String(weekStartDt.getMonth() + 1).padStart(2, "0")}-${String(weekStartDt.getDate()).padStart(2, "0")}`;
+        const bankedThisWeek = userFlags.bankedWeekKey === weekKeyStr ? Number(userFlags.bankedWeek || 0) : 0;
+        const bankedTotal    = Number(userFlags.bankedTotal || 0);
+
+        const weekRemaining = Math.max(0, weeklyLimit - weekFlexSpent - bankedThisWeek);
         const safeToday   = Math.round(weekRemaining / daysLeftInWeek);
-        const pctWeekSpent   = weeklyLimit > 0 ? Math.round((weekFlexSpent / weeklyLimit) * 100) : 0;
+        const pctWeekSpent   = weeklyLimit > 0 ? Math.round(((weekFlexSpent + bankedThisWeek) / weeklyLimit) * 100) : 0;
         const pctWeekElapsed = Math.round(((dayIndexInWeek + 1) / 7) * 100);
         const weekOverpace   = pctWeekSpent - pctWeekElapsed;
         const weekVerdict: "under" | "on-track" | "watch" | "over" =
@@ -219,6 +226,17 @@ export async function GET() {
         // "Available cash" proxy: income minus everything already spent
         // and still owed (bills + EMI) this month.
         const moneyLeftMonth = Math.max(0, income - monthTotalSpent - billsRemaining - debtEmiRemaining);
+
+        // ─── Carry-forward nudge inputs ───────────────────────────
+        // No-spend streak = whole days since the last everyday-spend.
+        const startOfDayMs = (ts: number) => { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+        const lastFlex = recentExpenses.find(e => flexCatSet.has(e.category));
+        const noSpendStreak = lastFlex
+            ? Math.floor((dayStart - startOfDayMs(lastFlex.ts)) / 86400000)
+            : Math.min(14, dayIndexInWeek + 1);
+        // How far under the weekly pace you are right now = what's bankable.
+        const aheadBy  = Math.max(0, Math.round((weeklyLimit * pctWeekElapsed) / 100) - weekFlexSpent - bankedThisWeek);
+        const bankable = Math.max(0, Math.min(weekRemaining, aheadBy));
 
         return NextResponse.json({
             ok: true,
@@ -244,6 +262,11 @@ export async function GET() {
                 verdict:        weekVerdict,
                 daysLeftInWeek,
                 debtPaid:       weekDebtPaid,
+                // carry-forward
+                noSpendStreak,
+                bankable,
+                banked:         bankedThisWeek,
+                bankedTotal,
                 // headline numbers the dashboard surfaces up top
                 income,
                 moneyLeftMonth,

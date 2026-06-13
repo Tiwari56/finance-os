@@ -80,6 +80,9 @@ function TodayTab({ data }: { data: StateData }) {
             {/* ── Weekly money hero — the unmissable block ───────── */}
             <WeeklyHero weekly={weekly} cycle={cycle} />
 
+            {/* ── Carry-forward: bank an under-spend streak ───────── */}
+            <CarryForwardNudge weekly={weekly} />
+
             {/* ── Salary day celebration (only on day=1) ──────────── */}
             {cycle.isSalaryDay && (
                 <Surface elevated className="p-4 !border-emerald-500/30 bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent">
@@ -354,9 +357,70 @@ function WeeklyHero({ weekly, cycle }: { weekly: StateData["weekly"]; cycle: Cyc
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  CARRY-FORWARD NUDGE
+//  When you go a few days without spending, offer to lock the unused
+//  budget into savings — or keep it as a buffer. ("Ask me each time".)
+// ════════════════════════════════════════════════════════════════════
+function CarryForwardNudge({ weekly }: { weekly: StateData["weekly"] }) {
+    const qc = useQueryClient();
+    const toast = useToast();
+    const [dismissed, setDismissed] = useState(false);
+
+    const bank = useMutation({
+        mutationFn: (amount: number) => apiPost("/api/allowance/bank", { amount }),
+        onSuccess: (res: { ok?: boolean }) => {
+            qc.invalidateQueries({ queryKey: ["state"] });
+            if (res?.ok) toast(`${fmt(weekly.bankable)} moved to savings 🎉`);
+            else toast("Could not bank right now", "error");
+        },
+        onError: () => toast("Could not bank right now", "error"),
+    });
+
+    const showNudge = !dismissed && weekly.noSpendStreak >= 3 && weekly.bankable >= 100;
+
+    // Quiet confirmation once something's been banked this week.
+    if (!showNudge && weekly.banked > 0) {
+        return (
+            <Surface className="p-3 !border-emerald-500/25 bg-gradient-to-br from-emerald-500/8 to-transparent">
+                <div className="flex items-center gap-2.5">
+                    <Icon name="shield" size={15} className="text-emerald-300" />
+                    <p className="text-[12px] text-emerald-200/90">
+                        <span className="font-semibold">{fmt(weekly.banked)}</span> banked to savings this week
+                        {weekly.bankedTotal > weekly.banked && <span className="text-emerald-300/70"> · {fmt(weekly.bankedTotal)} saved in total</span>}
+                    </p>
+                </div>
+            </Surface>
+        );
+    }
+
+    if (!showNudge) return null;
+
+    return (
+        <Surface elevated className="p-4 !border-emerald-500/30 bg-gradient-to-br from-emerald-500/12 via-emerald-500/4 to-transparent">
+            <div className="flex items-start gap-3">
+                <span className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-300 shrink-0">
+                    <Icon name="flame" size={18} />
+                </span>
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-emerald-200">{weekly.noSpendStreak} days, no spending 🎉</p>
+                    <p className="text-[12px] text-zinc-400 mt-0.5 leading-relaxed">
+                        You're <span className="text-zinc-200 font-medium">{fmt(weekly.bankable)}</span> under budget this week. Lock it into savings, or keep it as a spending buffer?
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                        <button onClick={() => bank.mutate(weekly.bankable)} disabled={bank.isPending} className="btn-success !text-xs !py-2 !px-3.5">
+                            {bank.isPending ? "Saving…" : `Bank ${fmt(weekly.bankable)}`}
+                        </button>
+                        <button onClick={() => setDismissed(true)} className="btn-soft !text-xs !py-2 !px-3.5">Keep as buffer</button>
+                    </div>
+                </div>
+            </div>
+        </Surface>
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  ENVELOPE STRIP
-//  6 mini-cards (Survival, Food, Freedom, SIP, Debt, Emergency) with
-//  remaining amount + sparkline. Tap to jump to envelope detail.
+//  Six mini-cards with remaining amount + bar. Tap to jump to detail.
 // ════════════════════════════════════════════════════════════════════
 function EnvelopeStrip({ envelopes, spent }: { envelopes: Envelope[]; spent: Record<string, number> }) {
     if (envelopes.length === 0) return null;

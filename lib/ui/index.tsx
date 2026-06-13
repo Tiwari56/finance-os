@@ -104,6 +104,10 @@ export interface WeeklyData {
     verdict: "under" | "on-track" | "watch" | "over";
     daysLeftInWeek: number;
     debtPaid: number;
+    noSpendStreak: number;
+    bankable: number;
+    banked: number;
+    bankedTotal: number;
     income: number;
     moneyLeftMonth: number;
     billsRemaining: number;

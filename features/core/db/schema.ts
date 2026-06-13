@@ -58,6 +58,10 @@ export const flags = sqliteTable("flags", {
     lastSalaryMonth: text("last_salary_month"),
     setupComplete: integer("setup_complete", { mode: "boolean" }).notNull().default(false),
     webhookSecret: text("webhook_secret"),
+    // Carry-forward: money the user banked from unspent weekly budget.
+    bankedWeek: real("banked_week").notNull().default(0),       // banked this week (resets per week)
+    bankedWeekKey: text("banked_week_key"),                     // ISO date of the week it belongs to
+    bankedTotal: real("banked_total").notNull().default(0),     // lifetime saved by not spending
 });
 
 /** Per-month summary snapshots for history tab */

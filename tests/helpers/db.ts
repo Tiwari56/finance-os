@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS flags (
   envelopes_setup INTEGER NOT NULL DEFAULT 0,
   last_salary_month TEXT,
   setup_complete INTEGER NOT NULL DEFAULT 0,
-  webhook_secret TEXT
+  webhook_secret TEXT,
+  banked_week REAL NOT NULL DEFAULT 0,
+  banked_week_key TEXT,
+  banked_total REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS month_history (
   id TEXT PRIMARY KEY,
