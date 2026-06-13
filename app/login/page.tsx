@@ -50,7 +50,7 @@ export default function LoginPage() {
                 {/* Logo */}
                 <div className="flex flex-col items-center text-center mb-8">
                     <div className="mb-4"><LogoMark size={56} /></div>
-                    <h1 className="text-2xl font-semibold text-white tracking-tight">Steady</h1>
+                    <h1 className="text-2xl font-semibold text-white tracking-tight">Finance OS</h1>
                     <p className="text-sm text-zinc-500 mt-1.5">Stay on top of your money.</p>
                 </div>
 

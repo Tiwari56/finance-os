@@ -801,6 +801,10 @@ function DebtsTab({ state }: { state: StateData }) {
         },
         onError: () => toast("Could not record payment", "error"),
     });
+    const [showForm, setShowForm] = useState(false);
+    const [editDebt, setEditDebt] = useState<Debt | null>(null);
+    const openAdd = () => { setEditDebt(null); setShowForm(true); };
+    const openEdit = (d: Debt) => { setEditDebt(d); setShowForm(true); };
 
     if (isLoading) return <Loading label="Loading debts…" />;
     const debts: Debt[] = data?.debts ?? [];
@@ -820,12 +824,34 @@ function DebtsTab({ state }: { state: StateData }) {
         <div className="space-y-4 pb-24 stagger-in">
             <Surface elevated className="p-5 relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-red-500/15 to-transparent pointer-events-none" />
-                <div className="relative">
-                    <p className="text-[11px] uppercase tracking-widest text-zinc-400 mb-1">Total outstanding</p>
-                    <p className="text-4xl font-bold text-red-400 tabular-nums tracking-tight">{fmtL(total)}</p>
-                    <p className="text-xs text-zinc-500 mt-1">{active.length} active · {settled.length} settled</p>
+                <div className="relative flex items-start justify-between gap-3">
+                    <div>
+                        <p className="text-[11px] uppercase tracking-widest text-zinc-400 mb-1">Total outstanding</p>
+                        <p className="text-4xl font-bold text-red-400 tabular-nums tracking-tight">{fmtL(total)}</p>
+                        <p className="text-xs text-zinc-500 mt-1">{active.length} active · {settled.length} settled</p>
+                    </div>
+                    <button onClick={openAdd}
+                        className="btn-soft !text-[12px] !py-2 !px-3 inline-flex items-center gap-1.5 shrink-0">
+                        <Icon name="plus" size={15} strokeWidth={2.2} /> Add debt
+                    </button>
                 </div>
             </Surface>
+
+            {/* Empty state — make "where do I set this up?" obvious */}
+            {debts.length === 0 && (
+                <Surface className="p-6 text-center">
+                    <span className="w-12 h-12 mx-auto rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-zinc-300 mb-3">
+                        <Icon name="credit-card" size={22} />
+                    </span>
+                    <p className="text-sm font-medium text-zinc-200">No debts added yet</p>
+                    <p className="text-[12px] text-zinc-500 mt-1 mb-4 max-w-xs mx-auto">
+                        Add your loans and credit cards with their EMI, interest rate and due date — and Finance OS builds your payoff plan automatically.
+                    </p>
+                    <button onClick={openAdd} className="btn-primary !py-2.5 !px-5 inline-flex items-center gap-1.5">
+                        <Icon name="plus" size={16} strokeWidth={2.2} /> Add your first debt
+                    </button>
+                </Surface>
+            )}
 
             {/* Payoff projection — the "when am I free?" answer */}
             {active.length > 0 && <PayoffPlan debts={active} envelopes={state.envelopes} />}
@@ -857,6 +883,7 @@ function DebtsTab({ state }: { state: StateData }) {
                                 isPriority={d.id === avalancheTarget?.id}
                                 pending={pay.isPending}
                                 onPay={(body) => pay.mutate(body)}
+                                onEdit={() => openEdit(d)}
                             />
                         ))}
                     </div>
@@ -876,6 +903,8 @@ function DebtsTab({ state }: { state: StateData }) {
                     </Surface>
                 </section>
             )}
+
+            {showForm && <DebtFormSheet debt={editDebt} onClose={() => setShowForm(false)} />}
         </div>
     );
 }
@@ -905,11 +934,12 @@ function QuickPay({ label, onClick, disabled, tone = "default" }: {
     );
 }
 
-function DebtCard({ debt: d, isPriority, onPay, pending }: {
+function DebtCard({ debt: d, isPriority, onPay, pending, onEdit }: {
     debt: Debt;
     isPriority: boolean;
     onPay: (body: Record<string, unknown>) => void;
     pending: boolean;
+    onEdit: () => void;
 }) {
     const [amt, setAmt] = useState("");
     const isCC = d.type === "cc";
@@ -932,7 +962,7 @@ function DebtCard({ debt: d, isPriority, onPay, pending }: {
 
     return (
         <Surface className={`p-4 ${isPriority ? "!border-yellow-500/30" : ""}`}>
-            <div className="flex items-start justify-between mb-2">
+            <div className="flex items-start justify-between mb-2 gap-2">
                 <div className="min-w-0">
                     <p className="text-sm font-medium text-zinc-100 truncate flex items-center gap-2">
                         {d.name}
@@ -940,9 +970,15 @@ function DebtCard({ debt: d, isPriority, onPay, pending }: {
                     </p>
                     {meta.length > 0 && <p className="text-[11px] text-zinc-500 mt-0.5">{meta.join(" · ")}</p>}
                 </div>
-                <div className="text-right shrink-0 pl-3">
-                    <p className="text-lg font-bold text-white tabular-nums leading-none">{fmt(d.balance)}</p>
-                    <p className="text-[10px] text-zinc-600 mt-1">outstanding</p>
+                <div className="flex items-start gap-1.5 shrink-0">
+                    <button onClick={onEdit} aria-label="Edit debt details"
+                        className="text-zinc-500 hover:text-white w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors -mt-0.5">
+                        <Icon name="sliders" size={15} />
+                    </button>
+                    <div className="text-right">
+                        <p className="text-lg font-bold text-white tabular-nums leading-none">{fmt(d.balance)}</p>
+                        <p className="text-[10px] text-zinc-600 mt-1">outstanding</p>
+                    </div>
                 </div>
             </div>
 
@@ -999,6 +1035,187 @@ function DebtCard({ debt: d, isPriority, onPay, pending }: {
                 <button onClick={payCustom} disabled={pending || !amt} className="btn-success shrink-0">Pay</button>
             </div>
         </Surface>
+    );
+}
+
+// ─── Guided Add / Edit debt form ──────────────────────────────────
+function DebtField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+    return (
+        <div>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">{label}</label>
+            {children}
+            {hint && <p className="text-[10px] text-zinc-600 mt-1 leading-relaxed">{hint}</p>}
+        </div>
+    );
+}
+
+const DEBT_TYPES = [
+    { id: "formal", label: "Loan", icon: "banknote", hint: "Personal, home, car, education…" },
+    { id: "cc", label: "Credit card", icon: "credit-card", hint: "Any card with a statement" },
+    { id: "friend", label: "Person", icon: "inbox", hint: "Money owed to friend / family" },
+] as const;
+
+function DebtFormSheet({ debt, onClose }: { debt: Debt | null; onClose: () => void }) {
+    const qc = useQueryClient();
+    const toast = useToast();
+    const editing = !!debt;
+
+    const [type, setType] = useState<"formal" | "cc" | "friend">((debt?.type as "formal" | "cc" | "friend") ?? "formal");
+    const [name, setName] = useState(debt?.name ?? "");
+    const str = (v: number | null | undefined) => (v != null && v !== 0 ? String(v) : "");
+    const [balance, setBalance] = useState(str(debt?.balance));
+    const [principal, setPrincipal] = useState(str(debt?.principal));
+    const [rate, setRate] = useState(str(debt?.rate));
+    const [emi, setEmi] = useState(str(debt?.emi));
+    const [dueDay, setDueDay] = useState(str(debt?.dueDay));
+    const [tenure, setTenure] = useState(str(debt?.tenureMonths));
+    const [creditLimit, setCreditLimit] = useState(str(debt?.creditLimit));
+    const [minDue, setMinDue] = useState(str(debt?.minDue));
+    const [statement, setStatement] = useState(str(debt?.statementBalance));
+
+    const save = useMutation({
+        mutationFn: (body: unknown) => apiPost("/api/debts/upsert", body),
+        onSuccess: (res: { ok?: boolean; error?: string }) => {
+            qc.invalidateQueries({ queryKey: ["debts"] });
+            qc.invalidateQueries({ queryKey: ["state"] });
+            if (res?.ok) { toast(editing ? "Debt updated ✓" : "Debt added ✓"); onClose(); }
+            else toast(res?.error ?? "Could not save debt", "error");
+        },
+        onError: () => toast("Could not save debt", "error"),
+    });
+
+    const num = (s: string) => { const n = Number(s); return Number.isFinite(n) ? n : 0; };
+
+    const submit = () => {
+        if (!name.trim()) { toast("Give it a name first", "error"); return; }
+        if (num(balance) <= 0) { toast("Add the amount you still owe", "error"); return; }
+        const body: Record<string, unknown> = {
+            id: debt?.id,
+            name: name.trim(),
+            type,
+            balance: num(balance),
+            rate: num(rate),
+            emi: type === "friend" ? 0 : num(emi),
+        };
+        if (type === "formal") {
+            body.principal = principal ? num(principal) : num(balance);
+            if (dueDay) body.dueDay = num(dueDay);
+            if (tenure) body.tenureMonths = num(tenure);
+        } else if (type === "cc") {
+            if (creditLimit) body.creditLimit = num(creditLimit);
+            if (minDue) body.minDue = num(minDue);
+            body.statementBalance = statement ? num(statement) : num(balance);
+            if (dueDay) body.dueDay = num(dueDay);
+        }
+        save.mutate(body);
+    };
+
+    const rupee = (val: string, set: (s: string) => void, placeholder = "0") => (
+        <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 text-sm font-medium pointer-events-none">₹</span>
+            <Input type="number" inputMode="decimal" placeholder={placeholder} value={val}
+                onChange={e => set(e.target.value)} className="!pl-8 !tabular-nums" />
+        </div>
+    );
+
+    return (
+        <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-end justify-center fade-in"
+            onClick={onClose} role="dialog" aria-modal="true">
+            <div className="surface-elev w-full max-w-xl rounded-t-3xl slide-up flex flex-col"
+                style={{ maxHeight: "min(92dvh, 760px)", paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
+                onClick={e => e.stopPropagation()}>
+
+                {/* header */}
+                <div className="flex items-center justify-between p-5 border-b border-white/5 shrink-0">
+                    <p className="text-lg font-semibold text-white">{editing ? "Edit debt" : "Add a debt"}</p>
+                    <button onClick={onClose} aria-label="Close"
+                        className="text-zinc-400 hover:text-white text-xl leading-none w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors">×</button>
+                </div>
+
+                {/* body */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                    {/* Type picker */}
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">What kind of debt?</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {DEBT_TYPES.map(t => (
+                                <button key={t.id} onClick={() => setType(t.id)}
+                                    className={`p-3 rounded-xl border text-center transition-all active:scale-95 ${type === t.id
+                                        ? "border-blue-500/60 bg-blue-500/10 text-white"
+                                        : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20"}`}>
+                                    <span className="flex items-center justify-center mb-1"><Icon name={t.icon} size={20} /></span>
+                                    <span className="text-[12px] font-medium block">{t.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-zinc-600 mt-1.5">{DEBT_TYPES.find(t => t.id === type)?.hint}</p>
+                    </div>
+
+                    <DebtField label={type === "cc" ? "Card / bank name" : type === "friend" ? "Who do you owe?" : "Lender / loan name"}>
+                        <Input type="text" value={name} onChange={e => setName(e.target.value)}
+                            placeholder={type === "cc" ? "e.g. HDFC Millennia" : type === "friend" ? "e.g. Rahul" : "e.g. HDFC personal loan"} />
+                    </DebtField>
+
+                    <DebtField label={type === "cc" ? "Total outstanding" : "Amount you still owe"}
+                        hint={type === "formal" ? "The balance left on the loan, not the original amount." : undefined}>
+                        {rupee(balance, setBalance)}
+                    </DebtField>
+
+                    {/* Loan-specific */}
+                    {type === "formal" && (
+                        <>
+                            <div className="grid grid-cols-2 gap-3">
+                                <DebtField label="Interest rate" hint="% per year (ROI)">
+                                    <div className="relative">
+                                        <Input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="0" className="!pr-7 !tabular-nums" />
+                                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 text-sm pointer-events-none">%</span>
+                                    </div>
+                                </DebtField>
+                                <DebtField label="Monthly EMI">{rupee(emi, setEmi)}</DebtField>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <DebtField label="EMI due day" hint="Day of month (1–28)">
+                                    <Input type="number" inputMode="numeric" value={dueDay} onChange={e => setDueDay(e.target.value)} placeholder="5" className="!tabular-nums" />
+                                </DebtField>
+                                <DebtField label="Months left" hint="Optional">
+                                    <Input type="number" inputMode="numeric" value={tenure} onChange={e => setTenure(e.target.value)} placeholder="36" className="!tabular-nums" />
+                                </DebtField>
+                            </div>
+                            <DebtField label="Original loan amount" hint="Optional — defaults to the amount owed.">{rupee(principal, setPrincipal)}</DebtField>
+                        </>
+                    )}
+
+                    {/* Credit-card-specific */}
+                    {type === "cc" && (
+                        <>
+                            <div className="grid grid-cols-2 gap-3">
+                                <DebtField label="Minimum due" hint="From your statement">{rupee(minDue, setMinDue)}</DebtField>
+                                <DebtField label="Statement amount" hint="Optional — full bill">{rupee(statement, setStatement)}</DebtField>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <DebtField label="Payment due day" hint="Day of month (1–28)">
+                                    <Input type="number" inputMode="numeric" value={dueDay} onChange={e => setDueDay(e.target.value)} placeholder="5" className="!tabular-nums" />
+                                </DebtField>
+                                <DebtField label="Interest rate" hint="% per year">
+                                    <div className="relative">
+                                        <Input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="42" className="!pr-7 !tabular-nums" />
+                                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 text-sm pointer-events-none">%</span>
+                                    </div>
+                                </DebtField>
+                            </div>
+                            <DebtField label="Credit limit" hint="Optional">{rupee(creditLimit, setCreditLimit)}</DebtField>
+                        </>
+                    )}
+                </div>
+
+                {/* footer */}
+                <div className="px-5 py-4 border-t border-white/5 bg-black/30 shrink-0">
+                    <button onClick={submit} disabled={save.isPending} className="btn-primary w-full !py-3.5 !text-base">
+                        {save.isPending ? "Saving…" : editing ? "Save changes" : "Add debt"}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -1472,7 +1689,7 @@ function AdvisorTab() {
 //  ROOT
 // ════════════════════════════════════════════════════════════════════
 const TABS = [
-    { id: "today", label: "Today", icon: "home" },
+    { id: "week", label: "Week", icon: "calendar" },
     { id: "overview", label: "Overview", icon: "pie-chart" },
     { id: "history", label: "History", icon: "clock" },
     { id: "debts", label: "Debts", icon: "credit-card" },
@@ -1483,7 +1700,7 @@ const TABS = [
 type TabId = typeof TABS[number]["id"];
 
 export default function Home() {
-    const [tab, setTab] = useState<TabId>("today");
+    const [tab, setTab] = useState<TabId>("week");
     const { data: session } = useSession();
     const { data: stateData, isLoading } = useQuery<StateData>({
         queryKey: ["state"],
@@ -1503,7 +1720,7 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                         <LogoMark size={36} />
                         <div>
-                            <p className="text-[15px] font-semibold text-white leading-tight tracking-tight">Steady</p>
+                            <p className="text-[15px] font-semibold text-white leading-tight tracking-tight">Finance OS</p>
                             <p className="text-[11px] text-zinc-500 leading-tight mt-0.5">{dateStr}</p>
                         </div>
                     </div>
@@ -1543,7 +1760,7 @@ export default function Home() {
                 {!isLoading && !dbReady && <DBNotReady />}
                 {!isLoading && dbReady && stateData && (
                     <>
-                        {tab === "today" && <TodayTab data={stateData} />}
+                        {tab === "week" && <TodayTab data={stateData} />}
                         {tab === "overview" && <OverviewTab data={stateData} />}
                         {tab === "history" && <HistoryTab />}
                         {tab === "debts" && <DebtsTab state={stateData} />}

@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "Steady",
-  description: "Stay on top of your money — spending, debt, and what's safe to spend, automatically.",
+  title: "Finance OS",
+  description: "Track your money, crush your debt — your personal finance command center.",
 };
 
 export default function RootLayout({ children }) {
