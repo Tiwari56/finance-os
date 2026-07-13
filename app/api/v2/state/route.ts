@@ -20,11 +20,12 @@ import { bills, billPayments } from "@/features/bills/schema";
 import { ious } from "@/features/ious/schema";
 import { envelopes } from "@/features/envelopes/schema";
 import { goals } from "@/features/goals/schema";
+import { projects } from "@/features/projects/schema";
 import { profile, flags } from "@/features/core/db/schema";
 import { dailyAllowance, smartAllowance } from "@/features/allowance/lib/math";
 import { CATEGORIES, isFlexCategory, type CategoryKey } from "@/features/expenses/lib/categorize";
 import { envelopeKeyOf, isFlexEnvelope } from "@/features/envelopes/lib/keys";
-import { gte, eq, desc, and, getTableColumns } from "drizzle-orm";
+import { gte, eq, desc, and, getTableColumns, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/requireUser";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +65,7 @@ export async function GET() {
         // ─── Parallel reads ───────────────────────────────────────
         const [
             profileRows, flagRows,
-            allEnvelopes, allDebts, allBills, activeGoals,
+            allEnvelopes, allDebts, allBills, activeGoals, activeProjects,
             recentExpenses, monthExpenses, todayExpenses, weekExpenses,
             monthBillPayments, recentDebtPayments,
             allIous,
@@ -75,6 +76,7 @@ export async function GET() {
             db.select().from(debts).where(eq(debts.userId, userId as string)).orderBy(debts.order),
             db.select().from(bills).where(and(eq(bills.userId, userId as string), eq(bills.active, true))).orderBy(bills.order),
             db.select().from(goals).where(and(eq(goals.userId, userId as string), eq(goals.active, true))).orderBy(goals.order),
+            db.select().from(projects).where(and(eq(projects.userId, userId as string), eq(projects.status, "active"))).orderBy(projects.createdTs),
             db.select().from(expenses).where(eq(expenses.userId, userId as string)).orderBy(desc(expenses.ts)).limit(50),
             db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, monthStart))),
             db.select().from(expenses).where(and(eq(expenses.userId, userId as string), gte(expenses.ts, dayStart))),
@@ -89,6 +91,17 @@ export async function GET() {
                 .where(and(eq(debts.userId, userId as string), gte(debtPayments.ts, monthStart))),
             db.select().from(ious).where(eq(ious.userId, userId as string)).orderBy(ious.ts),
         ]);
+
+        // Compute per-project spend from linked expenses
+        const projectsWithSpend = await Promise.all(
+            activeProjects.map(async (p) => {
+                const [s] = await db
+                    .select({ total: sql<number>`sum(${expenses.amount})` })
+                    .from(expenses)
+                    .where(and(eq(expenses.userId, userId as string), eq(expenses.projectId, p.id)));
+                return { ...p, spent: Number(s?.total ?? 0) };
+            })
+        );
 
         const userProfile = (profileRows[0] as any) ?? { id: userId, name: "User", income: 180000, salaryDay: 1, currency: "INR" };
         const userFlags   = (flagRows[0]    as any) ?? { salaryReceived: false, envelopesSetup: false, setupComplete: false };
@@ -291,6 +304,7 @@ export async function GET() {
                 totalOpen: totalIouOpen,
             },
             goals: activeGoals,
+            projects: projectsWithSpend,
             overview: {
                 cycleStart: cycleStartDt.toISOString(),
                 cycleSpendByCategory,

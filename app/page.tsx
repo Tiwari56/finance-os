@@ -9,7 +9,7 @@ import {
     Surface, Pill, Money, ProgressBar, Collapsible, Input,
     Loading, EmptyState, DashboardSkeleton, useToast, apiFetch, apiPost, startOfDay,
     Icon, LogoMark,
-    type StateData, type Bill, type Debt, type Expense, type Envelope,
+    type StateData, type Bill, type Debt, type Expense, type Envelope, type Project,
 } from "@/lib/ui";
 import { avalanche } from "@/features/debts/lib/avalanche";
 import { AIInsight, AIQuestion } from "@/features/advisor/components/AIInsight";
@@ -654,17 +654,25 @@ function PayBillSheet({ bill, onClose, onSubmit }: {
 }
 
 // ─── Add expense bottom sheet ─────────────────────────────────────
-function AddExpenseSheet({ onClose }: { onClose: () => void }) {
+function AddExpenseSheet({ onClose, defaultProjectId }: { onClose: () => void; defaultProjectId?: string }) {
     const qc = useQueryClient();
     const toast = useToast();
     const [amount, setAmount] = useState("");
     const [merchant, setMerchant] = useState("");
     const [category, setCategory] = useState("food");
+    const [projectId, setProjectId] = useState(defaultProjectId ?? "");
+
+    const { data: projData } = useQuery({
+        queryKey: ["projects"],
+        queryFn: () => apiFetch("/api/projects/list"),
+    });
+    const projectList: Project[] = projData?.projects ?? [];
 
     const log = useMutation({
         mutationFn: (body: unknown) => apiPost("/api/expenses/log", body),
         onSuccess: (res: { ok?: boolean; message?: string; error?: string }) => {
             qc.invalidateQueries({ queryKey: ["state"] });
+            qc.invalidateQueries({ queryKey: ["projects"] });
             if (res?.ok) toast(res.message ?? "Expense logged ✓");
             else toast(res?.error ?? "Could not log expense", "error");
             onClose();
@@ -763,12 +771,41 @@ function AddExpenseSheet({ onClose }: { onClose: () => void }) {
                             ))}
                         </div>
                     </div>
+
+                    {projectList.length > 0 && (
+                        <div>
+                            <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">
+                                Link to project <span className="normal-case tracking-normal text-zinc-600">(optional)</span>
+                            </label>
+                            <div className="flex gap-2 flex-wrap">
+                                <button
+                                    onClick={() => setProjectId("")}
+                                    className={`text-[11px] px-3 py-1.5 rounded-full border transition-all ${projectId === ""
+                                        ? "border-blue-500/60 bg-blue-500/10 text-blue-300"
+                                        : "border-white/10 bg-black/20 text-zinc-500 hover:border-white/20"}`}
+                                >
+                                    None
+                                </button>
+                                {projectList.map(p => (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => setProjectId(p.id)}
+                                        className={`text-[11px] px-3 py-1.5 rounded-full border transition-all ${projectId === p.id
+                                            ? "border-blue-500/60 bg-blue-500/10 text-blue-300"
+                                            : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20"}`}
+                                    >
+                                        {p.icon} {p.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* sticky footer with the submit button — always visible */}
                 <div className="px-5 py-4 border-t border-white/5 bg-black/30 shrink-0">
                     <button
-                        onClick={() => log.mutate({ amount: Number(amount), merchant, category, source: "manual" })}
+                        onClick={() => log.mutate({ amount: Number(amount), merchant, category, source: "manual", projectId: projectId || undefined })}
                         disabled={!amount || log.isPending}
                         className="btn-primary w-full !py-3.5 !text-base"
                     >
@@ -1528,6 +1565,359 @@ function OverviewTab({ data }: { data: StateData }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  PROJECTS SECTION — modular tracker for spending-oriented projects
+//  (home renovation, travel, car repairs…). Connected to expenses
+//  via projectId field so actual spend is auto-calculated.
+// ════════════════════════════════════════════════════════════════════
+
+const PRIORITY_META: Record<string, { label: string; color: string }> = {
+    immediate: { label: "Immediate", color: "bg-red-500/15 text-red-300 border-red-500/25" },
+    planned:   { label: "Planned",   color: "bg-yellow-500/15 text-yellow-300 border-yellow-500/25" },
+    someday:   { label: "Someday",   color: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25" },
+};
+
+const CATEGORY_ICONS: Record<string, string> = {
+    home: "🏠", travel: "✈️", health: "💊", car: "🚗",
+    education: "📚", work: "💼", other: "📦",
+};
+
+function ProjectFormSheet({ project, onClose }: { project: Project | null; onClose: () => void }) {
+    const qc = useQueryClient();
+    const toast = useToast();
+    const [name, setName] = useState(project?.name ?? "");
+    const [category, setCategory] = useState(project?.category ?? "home");
+    const [priority, setPriority] = useState<"immediate" | "planned" | "someday">(project?.priority ?? "planned");
+    const [budget, setBudget] = useState(project ? String(project.budget) : "");
+    const [description, setDescription] = useState(project?.description ?? "");
+
+    const save = useMutation({
+        mutationFn: (body: unknown) => apiPost("/api/projects/upsert", body),
+        onSuccess: (res: { ok?: boolean; error?: string }) => {
+            if (res?.ok) {
+                qc.invalidateQueries({ queryKey: ["state"] });
+                qc.invalidateQueries({ queryKey: ["projects"] });
+                toast(project ? "Project updated" : "Project added");
+                onClose();
+            } else {
+                toast(res?.error ?? "Could not save project", "error");
+            }
+        },
+        onError: () => toast("Could not save project", "error"),
+    });
+
+    const del = useMutation({
+        mutationFn: () => apiPost("/api/projects/delete", { id: project!.id }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["state"] });
+            qc.invalidateQueries({ queryKey: ["projects"] });
+            toast("Project removed");
+            onClose();
+        },
+    });
+
+    const CATS = Object.entries(CATEGORY_ICONS).map(([id, icon]) => ({
+        id, icon, label: id.charAt(0).toUpperCase() + id.slice(1),
+    }));
+
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-end justify-center fade-in"
+            onClick={onClose}
+            role="dialog" aria-modal="true"
+        >
+            <div
+                className="surface-elev w-full max-w-xl rounded-t-3xl slide-up flex flex-col"
+                style={{ maxHeight: "min(90dvh, 720px)", paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between p-5 border-b border-white/5 shrink-0">
+                    <p className="text-lg font-semibold text-white">{project ? "Edit project" : "New project"}</p>
+                    <button onClick={onClose} className="text-zinc-400 hover:text-white text-xl leading-none w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors" aria-label="Close">×</button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Project name</label>
+                        <Input placeholder="e.g. Tile work, Europe trip, Car service…" value={name} onChange={e => setName(e.target.value)} autoFocus />
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Category</label>
+                        <div className="grid grid-cols-4 gap-2">
+                            {CATS.map(c => (
+                                <button key={c.id} onClick={() => setCategory(c.id)}
+                                    className={`p-2 rounded-xl border text-center transition-all active:scale-95 ${category === c.id ? "border-blue-500/60 bg-blue-500/10" : "border-white/10 bg-black/20 hover:border-white/20"}`}>
+                                    <div className="text-xl">{c.icon}</div>
+                                    <div className="text-[10px] text-zinc-400 mt-0.5">{c.label}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Priority</label>
+                        <div className="flex gap-2">
+                            {(["immediate", "planned", "someday"] as const).map(p => (
+                                <button key={p} onClick={() => setPriority(p)}
+                                    className={`flex-1 py-2 rounded-xl border text-[11px] font-medium transition-all ${priority === p ? "border-blue-500/60 bg-blue-500/10 text-blue-300" : "border-white/10 bg-black/20 text-zinc-500 hover:border-white/20"}`}>
+                                    {PRIORITY_META[p].label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Estimated budget</label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-base pointer-events-none">₹</span>
+                            <Input type="number" inputMode="decimal" placeholder="0" value={budget}
+                                onChange={e => setBudget(e.target.value)} className="!pl-9" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5 block">Notes <span className="normal-case tracking-normal text-zinc-600">(optional)</span></label>
+                        <Input placeholder="Any details…" value={description} onChange={e => setDescription(e.target.value)} />
+                    </div>
+                </div>
+
+                <div className="px-5 py-4 border-t border-white/5 bg-black/30 shrink-0 space-y-2">
+                    <button
+                        onClick={() => save.mutate({ id: project?.id, name, category, priority, budget: Number(budget) || 0, description, icon: CATEGORY_ICONS[category] ?? "📦" })}
+                        disabled={!name || save.isPending}
+                        className="btn-primary w-full !py-3.5 !text-base"
+                    >
+                        {save.isPending ? "Saving…" : project ? "Save changes" : "Add project"}
+                    </button>
+                    {project && (
+                        <button onClick={() => del.mutate()} disabled={del.isPending}
+                            className="w-full py-2.5 text-sm text-red-400 hover:text-red-300 transition-colors">
+                            {del.isPending ? "Removing…" : "Remove project"}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
+
+function ProjectsSection({ projects }: { projects: Project[] }) {
+    const [showForm, setShowForm] = useState(false);
+    const [editProject, setEditProject] = useState<Project | null>(null);
+
+    if (projects.length === 0) {
+        return (
+            <Surface className="p-4">
+                <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm font-semibold text-zinc-200">Projects</p>
+                    <button onClick={() => { setEditProject(null); setShowForm(true); }}
+                        className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors">
+                        <Icon name="plus" size={13} /> New
+                    </button>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">Track spending on specific goals — tile work, travel, renovations.</p>
+                {showForm && <ProjectFormSheet project={null} onClose={() => setShowForm(false)} />}
+            </Surface>
+        );
+    }
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Projects</p>
+                <button onClick={() => { setEditProject(null); setShowForm(true); }}
+                    className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors">
+                    <Icon name="plus" size={13} /> New
+                </button>
+            </div>
+            {projects.map(p => {
+                const pct = p.budget > 0 ? Math.min(100, Math.round((p.spent / p.budget) * 100)) : 0;
+                const over = p.budget > 0 && p.spent > p.budget;
+                const pm = PRIORITY_META[p.priority] ?? PRIORITY_META.planned;
+                return (
+                    <Surface key={p.id} className="p-4">
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="text-xl shrink-0">{p.icon}</span>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-medium text-zinc-100 truncate">{p.name}</p>
+                                    {p.description && <p className="text-[11px] text-zinc-500 truncate">{p.description}</p>}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${pm.color}`}>{pm.label}</span>
+                                <button onClick={() => { setEditProject(p); setShowForm(true); }}
+                                    className="text-zinc-500 hover:text-zinc-200 transition-colors">
+                                    <Icon name="edit" size={14} />
+                                </button>
+                            </div>
+                        </div>
+                        {p.budget > 0 && (
+                            <div className="mt-3 space-y-1.5">
+                                <div className="flex items-center justify-between text-[11px]">
+                                    <span className={over ? "text-red-400" : "text-zinc-500"}>
+                                        {over ? `₹${Math.round(p.spent - p.budget).toLocaleString("en-IN")} over budget` : `₹${Math.round(p.spent).toLocaleString("en-IN")} spent`}
+                                    </span>
+                                    <span className="text-zinc-500">of ₹{Math.round(p.budget).toLocaleString("en-IN")}</span>
+                                </div>
+                                <ProgressBar pct={pct} danger={100} warn={75} />
+                            </div>
+                        )}
+                        {p.budget === 0 && p.spent > 0 && (
+                            <p className="mt-2 text-[11px] text-zinc-500">₹{Math.round(p.spent).toLocaleString("en-IN")} spent so far</p>
+                        )}
+                    </Surface>
+                );
+            })}
+            {showForm && <ProjectFormSheet project={editProject} onClose={() => { setShowForm(false); setEditProject(null); }} />}
+        </div>
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  SPENDING TAB — expense log + log button + projects tracker
+// ════════════════════════════════════════════════════════════════════
+function SpendingTab({ data }: { data: StateData }) {
+    const [showAdd, setShowAdd] = useState(false);
+    const [query, setQuery] = useState("");
+    const [category, setCategory] = useState<string>("");
+    const [range, setRange] = useState<"7d" | "30d" | "90d" | "all">("30d");
+
+    const now = Date.now();
+    const fromMs = range === "all" ? null
+        : range === "7d" ? now - 7 * 86_400_000
+            : range === "30d" ? now - 30 * 86_400_000
+                : now - 90 * 86_400_000;
+
+    const params = new URLSearchParams({ groupBy: "day", limit: "200" });
+    if (fromMs) params.set("from", String(fromMs));
+    if (category) params.set("category", category);
+    if (query) params.set("merchant", query);
+
+    const { data: histData, isLoading, refetch, isFetching } = useQuery({
+        queryKey: ["history-list", range, category, query],
+        queryFn: () => apiFetch(`/api/expenses/list?${params.toString()}`),
+    });
+
+    const days: Array<{ date: string; total: number; count: number; items: Array<Expense & { categoryMeta: { label: string; icon: string } }> }> = histData?.days ?? [];
+    const grandTotal = days.reduce((s, d) => s + d.total, 0);
+    const grandCount = days.reduce((s, d) => s + d.count, 0);
+
+    const CATS = [
+        { id: "", label: "All" },
+        { id: "food", label: "🍱 Food" },
+        { id: "freedom", label: "🎯 Lifestyle" },
+        { id: "commute", label: "🚇 Commute" },
+        { id: "subscriptions", label: "📺 Subs" },
+        { id: "family", label: "📱 Family" },
+        { id: "rent", label: "🏠 Rent" },
+        { id: "maintenance", label: "⚡ Bills" },
+        { id: "debt", label: "💳 Debt" },
+        { id: "sip", label: "📈 SIP" },
+        { id: "other", label: "📦 Other" },
+    ];
+
+    return (
+        <div className="space-y-3 pb-28 stagger-in">
+            {/* Log button */}
+            <button
+                onClick={() => setShowAdd(true)}
+                className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl bg-[#5b7cfa] hover:bg-[#4a6be8] active:scale-[0.98] transition-all text-white font-semibold text-[15px] shadow-lg shadow-blue-500/20"
+            >
+                <Icon name="plus" size={20} />
+                Log expense
+            </button>
+
+            {/* Projects */}
+            <ProjectsSection projects={data.projects} />
+
+            {/* Filters */}
+            <Surface className="p-3 space-y-2">
+                <Input
+                    type="search"
+                    placeholder="Search by merchant…"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                />
+                <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1">
+                    {(["7d", "30d", "90d", "all"] as const).map(r => (
+                        <button key={r} onClick={() => setRange(r)}
+                            className={`text-[11px] px-2.5 py-1 rounded-full transition-all shrink-0 ${range === r
+                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                                : "bg-white/5 text-zinc-400 border border-white/10 hover:bg-white/10"}`}>
+                            {r === "7d" ? "Last 7 days" : r === "30d" ? "Last 30 days" : r === "90d" ? "Last 90 days" : "All time"}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
+                    {CATS.map(c => (
+                        <button key={c.id} onClick={() => setCategory(c.id)}
+                            className={`text-[11px] px-2.5 py-1 rounded-full transition-all shrink-0 whitespace-nowrap ${category === c.id
+                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                                : "bg-white/5 text-zinc-500 border border-white/10 hover:bg-white/10"}`}>
+                            {c.label}
+                        </button>
+                    ))}
+                </div>
+            </Surface>
+
+            {/* Summary strip */}
+            <div className="flex items-center justify-between px-1 text-[11px] text-zinc-500">
+                <span>{grandCount} expense{grandCount === 1 ? "" : "s"} · {days.length} day{days.length === 1 ? "" : "s"}</span>
+                <span className="tabular-nums">Total: <strong className="text-white">{fmt(grandTotal)}</strong></span>
+                <button onClick={() => refetch()} className="text-zinc-400 hover:text-white" aria-label="Refresh">
+                    {isFetching ? "⟳" : "↻"}
+                </button>
+            </div>
+
+            {isLoading ? <Loading /> : days.length === 0 ? (
+                <EmptyState
+                    icon="📜"
+                    title="Nothing here yet"
+                    hint={query || category ? "Try clearing filters." : "Tap Log expense to get started."}
+                />
+            ) : (
+                days.map(d => {
+                    const date = new Date(d.date + "T00:00:00");
+                    const label = date.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+                    return (
+                        <Surface key={d.date} className="overflow-hidden">
+                            <div className="flex items-center justify-between px-4 py-2.5 bg-white/[0.02] border-b border-white/5">
+                                <span className="text-xs font-medium text-zinc-300">{label}</span>
+                                <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+                                    <span>{d.count} {d.count === 1 ? "entry" : "entries"}</span>
+                                    <span className="tabular-nums text-white font-medium">{fmt(d.total)}</span>
+                                </div>
+                            </div>
+                            <div className="divide-y divide-white/5">
+                                {d.items.map(e => (
+                                    <div key={e.id} className="flex items-center justify-between px-4 py-2.5">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <span className="text-base">{e.categoryMeta.icon}</span>
+                                            <div className="min-w-0">
+                                                <p className="text-sm text-zinc-200 truncate">{e.merchant || "Unknown"}</p>
+                                                <p className="text-[10.5px] text-zinc-500">
+                                                    {e.categoryMeta.label} · {new Date(e.ts).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+                                                    {e.source && e.source !== "manual" && <span> · {e.source}</span>}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className="text-sm font-medium tabular-nums text-white shrink-0">{fmt(e.amount)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </Surface>
+                    );
+                })
+            )}
+
+            {showAdd && <AddExpenseSheet onClose={() => setShowAdd(false)} />}
+        </div>
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  HISTORY TAB
 //  Searchable, filterable log of EVERY expense ever, grouped by day.
 // ════════════════════════════════════════════════════════════════════
@@ -1687,12 +2077,11 @@ function AdvisorTab() {
 //  ROOT
 // ════════════════════════════════════════════════════════════════════
 const TABS = [
-    { id: "week", label: "Week", icon: "calendar" },
-    { id: "overview", label: "Overview", icon: "pie-chart" },
-    { id: "history", label: "History", icon: "clock" },
-    { id: "debts", label: "Debts", icon: "credit-card" },
-    { id: "advisor", label: "Coach", icon: "sparkles" },
-    { id: "config", label: "Settings", icon: "sliders" },
+    { id: "week",     label: "Home",     icon: "home"        },
+    { id: "spend",    label: "Spend",    icon: "receipt"     },
+    { id: "debts",    label: "Debts",    icon: "credit-card" },
+    { id: "overview", label: "Overview", icon: "pie-chart"   },
+    { id: "config",   label: "Settings", icon: "sliders"     },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -1975,10 +2364,9 @@ export default function Home() {
                 {!isLoading && dbReady && stateData && (
                     <>
                         {tab === "week" && <TodayTab data={stateData} onNavigate={setTab} />}
-                        {tab === "overview" && <OverviewTab data={stateData} />}
-                        {tab === "history" && <HistoryTab />}
+                        {tab === "spend" && <SpendingTab data={stateData} />}
                         {tab === "debts" && <DebtsTab state={stateData} />}
-                        {tab === "advisor" && <AdvisorTab />}
+                        {tab === "overview" && <OverviewTab data={stateData} />}
                         {tab === "config" && <ConfigTab data={stateData} />}
                     </>
                 )}

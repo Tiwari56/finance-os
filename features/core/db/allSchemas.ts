@@ -11,3 +11,4 @@ export * from "../../bills/schema";
 export * from "../../ious/schema";
 export * from "../../envelopes/schema";
 export * from "../../goals/schema";
+export * from "../../projects/schema";

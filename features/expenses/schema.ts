@@ -20,6 +20,7 @@ export const expenses = sqliteTable(
         clientRequestId: text("client_request_id").unique(),           // idempotency
         note: text("note"),
         envelopeId: text("envelope_id"),                          // override
+        projectId: text("project_id"),                            // optional link to a project
     },
     (t) => [
         index("expenses_ts_idx").on(t.ts),

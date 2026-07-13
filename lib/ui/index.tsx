@@ -42,6 +42,19 @@ export interface IOU {
 export interface Goal {
     id: string; label: string; needed: number; saved: number; icon: string;
 }
+export interface Project {
+    id: string;
+    name: string;
+    description?: string | null;
+    category: string;
+    priority: "immediate" | "planned" | "someday";
+    budget: number;
+    spent: number;   // computed from linked expenses
+    status: string;
+    icon: string;
+    createdTs: number;
+    targetTs?: number | null;
+}
 export interface Envelope {
     id: string; label: string; amount: number; icon: string; locked: boolean;
     /** Semantic key ("food", "debt", …) — ids are namespaced per user. */
@@ -128,6 +141,7 @@ export interface StateData {
     debts: { list: Debt[]; totalOutstanding: number; monthPaid: number; byType: DebtTypeSummary };
     ious: { open: IOU[]; totalOpen: number };
     goals: Goal[];
+    projects: Project[];
     overview: OverviewData;
 }
 

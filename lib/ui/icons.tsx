@@ -171,6 +171,34 @@ const PATHS: Record<string, ReactNode> = {
             <line x1="16.5" y1="13.5" x2="16.51" y2="13.5" />
         </>
     ),
+    layers: (
+        <>
+            <polygon points="12 2 2 7 12 12 22 7" />
+            <polyline points="2 17 12 22 22 17" />
+            <polyline points="2 12 12 17 22 12" />
+        </>
+    ),
+    "bar-chart": (
+        <>
+            <rect x="3" y="14" width="4" height="7" rx="1" />
+            <rect x="10" y="9" width="4" height="12" rx="1" />
+            <rect x="17" y="5" width="4" height="16" rx="1" />
+        </>
+    ),
+    "chevron-right": <polyline points="9.5 6 15.5 12 9.5 18" />,
+    edit: (
+        <>
+            <path d="M11.5 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-6.5" />
+            <path d="M16.5 2.5a2.121 2.121 0 0 1 3 3L10 15l-4 1 1-4z" />
+        </>
+    ),
+    trash: (
+        <>
+            <polyline points="3 6.5 21 6.5" />
+            <path d="M19 6.5V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6.5" />
+            <path d="M9 6.5v-2a2 2 0 0 1 4 0v2" />
+        </>
+    ),
 };
 
 export type IconName = keyof typeof PATHS;

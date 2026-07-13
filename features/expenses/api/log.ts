@@ -112,6 +112,7 @@ const LogBody = z.object({
     currency: z.string().optional().default("INR"),
     accountSuffix: z.string().optional(),
     note: z.string().optional(),
+    projectId: z.string().optional(),
     userId: z.string().optional(),   // legacy webhook calls (LOG_SECRET mode)
 });
 
@@ -175,6 +176,7 @@ export async function logExpense(
         currency: data.currency ?? "INR",
         clientRequestId: data.clientRequestId,
         note: data.note,
+        projectId: data.projectId,
     });
 
     // ─── Auto-link debt-category expenses → debt_payments ────────
