@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { getState } from "../../../lib/store";
 import { auth } from "../../../auth";
+import { resolveAiAccess, recordAiUsage } from "../../../lib/aiAccess";
 import {
   avalanche, dailyAllowance, wholeMoneyView, billsStatus, recommendations,
   getProfile, getEnvelopes, getGoals, getDailyFlexBudget,
@@ -111,13 +112,6 @@ Structure your response with EXACTLY these 5 sections, each on its own line star
 Keep total response under 350 words. No markdown headers. Plain text with the emojis as section markers.`;
 
 export async function POST(req) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    return NextResponse.json({
-      reply: "AI advisor not configured yet. Add ANTHROPIC_API_KEY to your Vercel environment variables (Settings → Environment Variables). You can get a key at console.anthropic.com.",
-    });
-  }
-
   let body;
   try { body = await req.json(); } catch { body = {}; }
   const mode = body.mode || "qa";
@@ -127,7 +121,20 @@ export async function POST(req) {
   }
 
   const session = await auth();
-  const state = await getState(session?.user?.id ?? null);
+  const userId = session?.user?.id ?? null;
+
+  // Per-user key resolution:
+  //   BYOK (their own key) → admin env key (daily-capped) → locked.
+  const access = await resolveAiAccess(userId);
+  if (!access.allowed) {
+    const status = access.reason === "daily-cap" ? 429 : 403;
+    return NextResponse.json(
+      { error: access.message, code: access.reason },
+      { status }
+    );
+  }
+
+  const state = await getState(userId);
   const now = new Date();
   const snap = buildSnapshot(state, now);
   const systemPrompt = buildSystemPrompt(state, snap, now);
@@ -140,11 +147,11 @@ export async function POST(req) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": key,
+        "x-api-key": access.key,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: access.model,
         max_tokens: maxTokens,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
@@ -156,9 +163,12 @@ export async function POST(req) {
       return NextResponse.json({ reply: `API error (${res.status}): ${errText.slice(0, 200)}` });
     }
 
+    // Count usage AFTER success only — failed calls don't burn quota
+    await recordAiUsage(userId);
+
     const data = await res.json();
     const reply = data.content?.map(b => b.text || "").join("\n") || "No response.";
-    return NextResponse.json({ reply, mode, generatedAt: now.toISOString() });
+    return NextResponse.json({ reply, mode, keySource: access.source, generatedAt: now.toISOString() });
   } catch (err) {
     return NextResponse.json({ reply: `Network error: ${err.message}` });
   }

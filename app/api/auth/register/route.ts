@@ -27,8 +27,14 @@ export async function POST(req: NextRequest) {
     const passwordHash = await bcrypt.hash(password, 12);
     const id = randomUUID();
 
-    await db.insert(users).values({ id, name, email, passwordHash });
+    // First account ever registered becomes admin (the app owner).
+    // Admin can use the server AI key (daily-capped); everyone else
+    // connects their own key in Config → AI Coach.
+    const [anyUser] = await db.select({ id: users.id }).from(users).limit(1);
+    const role = anyUser ? "user" : "admin";
+
+    await db.insert(users).values({ id, name, email, passwordHash, role });
     await seedNewUser(id, name);
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, role });
 }

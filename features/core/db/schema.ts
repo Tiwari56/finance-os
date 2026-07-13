@@ -13,6 +13,35 @@ export const users = sqliteTable("users", {
     emailVerified: integer("email_verified", { mode: "timestamp_ms" }),
     image: text("image"),
     passwordHash: text("password_hash"),   // null for OAuth-only users
+    // "admin" = app owner (uses server ANTHROPIC_API_KEY, manages users).
+    // "user"  = everyone else (must bring their own AI key).
+    // First registered account is auto-promoted to admin.
+    role: text("role").notNull().default("user"),
+});
+
+// ─── AI Advisor: per-user key + usage tracking ────────────────────
+/**
+ * BYOK (bring-your-own-key) storage. One row per user who connected
+ * their own Anthropic key. The key is AES-256-GCM encrypted with a
+ * server secret — never stored or logged in plaintext.
+ */
+export const aiSettings = sqliteTable("ai_settings", {
+    userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull().default("anthropic"),
+    encryptedKey: text("encrypted_key").notNull(),  // iv:tag:ciphertext, base64
+    model: text("model").notNull().default("claude-sonnet-4-6"),
+    updatedTs: integer("updated_ts").notNull(),
+});
+
+/**
+ * Daily request counter per user. Used to cap admin-key usage so a
+ * bug or a leaked admin session can't drain the owner's account.
+ */
+export const aiUsage = sqliteTable("ai_usage", {
+    id: text("id").primaryKey(),            // userId + ":" + "YYYY-MM-DD"
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),             // "YYYY-MM-DD"
+    count: integer("count").notNull().default(0),
 });
 
 export const accounts = sqliteTable("accounts", {
@@ -81,3 +110,5 @@ export type User = typeof users.$inferSelect;
 export type Profile = typeof profile.$inferSelect;
 export type Flags = typeof flags.$inferSelect;
 export type MonthHistory = typeof monthHistory.$inferSelect;
+export type AiSettings = typeof aiSettings.$inferSelect;
+export type AiUsage = typeof aiUsage.$inferSelect;

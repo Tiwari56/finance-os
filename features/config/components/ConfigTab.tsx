@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Surface, Pill, Input, apiFetch, apiPost, Loading, Collapsible, Icon } from "@/lib/ui";
 import { fmt } from "@/lib/format";
 import type { StateData } from "@/lib/ui";
+import { AiKeyPanel } from "@/features/advisor/components/AiKeyPanel";
 
 interface FeatureMeta {
     id: string; name: string; description: string; category: string;
@@ -87,6 +88,17 @@ export function ConfigTab({ data }: { data: StateData }) {
             >
                 <div className="space-y-6 pt-3">
 
+                    {/* AI Coach — per-user key management (BYOK) */}
+                    <section>
+                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1">AI Coach</p>
+                        <p className="text-[11px] text-zinc-600 px-1 mt-0.5 mb-2 leading-relaxed">
+                            The app owner's key is reserved for the admin account (with a daily limit).
+                            Everyone else connects their own Anthropic key — validated live, stored encrypted,
+                            and billed to their own account.
+                        </p>
+                        <AiKeyPanel />
+                    </section>
+
                     {/* Optional services */}
                     <section>
                         <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium px-1">Optional services</p>
@@ -94,15 +106,6 @@ export function ConfigTab({ data }: { data: StateData }) {
                             Extra features that switch on when an API key is added (set by whoever hosts the app).
                         </p>
                         <div className="space-y-2">
-                            <IntegrationRow
-                                icon={<Icon name="sparkles" size={18} />}
-                                name="AI Coach"
-                                description="Personalised money insights and a chat coach on the Coach tab."
-                                envKey="ANTHROPIC_API_KEY"
-                                configured={!!health?.anthropic?.configured}
-                                hint={health?.anthropic?.hint}
-                                testUrl="/api/health?test=anthropic"
-                            />
                             <IntegrationRow
                                 icon={<Icon name="inbox" size={18} />}
                                 name="Email reports"

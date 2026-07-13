@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Surface, apiPost, apiFetch, Loading } from "@/lib/ui";
+import { Surface, apiPost, Loading } from "@/lib/ui";
+import { AiKeyPanel, useAiKeyStatus } from "./AiKeyPanel";
 
 // Parse the analyze-mode reply into 5 emoji-headed sections.
 // Section markers in the advisor prompt:
@@ -48,12 +49,9 @@ export function AIInsight({ compact = false }: Props) {
     // Full mode also requires a manual click to avoid burning tokens on every mount.
     const [hasRequested, setHasRequested] = useState(false);
 
-    const { data: healthData } = useQuery({
-        queryKey: ["health-anthropic"],
-        queryFn: () => apiFetch("/api/health"),
-        staleTime: 5 * 60 * 1000,
-    });
-    const aiAvailable = healthData?.anthropic?.configured === true;
+    // Per-user access: BYOK key, admin server key (capped), or locked.
+    const { data: keyStatus } = useAiKeyStatus();
+    const aiAvailable = keyStatus?.allowed === true;
 
     const { data, isFetching, refetch, error } = useQuery({
         queryKey: ["ai-analysis", refreshKey],
@@ -64,17 +62,43 @@ export function AIInsight({ compact = false }: Props) {
         refetchOnWindowFocus: false,
     });
 
-    if (!aiAvailable) {
-        return (
-            <Surface className="p-4">
-                <div className="flex items-start gap-3">
-                    <span className="text-2xl">🧠</span>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-zinc-200">AI Coach not connected</p>
-                        <p className="text-xs text-zinc-500 mt-0.5">Set <code className="text-yellow-400 bg-black/40 px-1 rounded">ANTHROPIC_API_KEY</code> in env to enable daily analysis.</p>
+    if (keyStatus && !aiAvailable) {
+        // Locked (no key) or daily-capped. Compact shows a one-liner;
+        // full mode shows the connect-your-key panel inline.
+        if (compact) {
+            return (
+                <Surface className="p-4">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">🔒</span>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-zinc-200">
+                                {keyStatus.reason === "daily-cap" ? "AI limit reached for today" : "AI Coach locked"}
+                            </p>
+                            <p className="text-xs text-zinc-500 mt-0.5">
+                                {keyStatus.reason === "daily-cap"
+                                    ? "Resets at midnight."
+                                    : "Open the AI tab to connect your own API key."}
+                            </p>
+                        </div>
                     </div>
-                </div>
-            </Surface>
+                </Surface>
+            );
+        }
+        return (
+            <div className="space-y-3">
+                <Surface className="p-4">
+                    <div className="flex items-start gap-3">
+                        <span className="text-2xl">🧠</span>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-zinc-200">
+                                {keyStatus.reason === "daily-cap" ? "Daily AI limit reached" : "AI Coach needs a key"}
+                            </p>
+                            <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{keyStatus.message}</p>
+                        </div>
+                    </div>
+                </Surface>
+                {keyStatus.reason === "no-key" && <AiKeyPanel />}
+            </div>
         );
     }
 
@@ -88,7 +112,13 @@ export function AIInsight({ compact = false }: Props) {
                     </div>
                     <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-zinc-200">AI Coach ready</p>
-                        <p className="text-xs text-zinc-500 mt-0.5">Open the AI tab to run a full analysis of your finances.</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                            Open the AI tab to run a full analysis
+                            {keyStatus?.source === "byok" ? " — using your key" : ""}
+                            {keyStatus?.source === "admin-env" && keyStatus.dailyCap
+                                ? ` — ${keyStatus.usedToday}/${keyStatus.dailyCap} used today`
+                                : ""}.
+                        </p>
                     </div>
                 </div>
             </Surface>

@@ -21,7 +21,21 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   email_verified INTEGER,
   image TEXT,
-  password_hash TEXT
+  password_hash TEXT,
+  role TEXT NOT NULL DEFAULT 'user'
+);
+CREATE TABLE IF NOT EXISTS ai_settings (
+  user_id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'anthropic',
+  encrypted_key TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT 'claude-sonnet-4-6',
+  updated_ts INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ai_usage (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS accounts (
   user_id TEXT NOT NULL,
@@ -89,7 +103,8 @@ CREATE TABLE IF NOT EXISTS expenses (
   currency TEXT NOT NULL DEFAULT 'INR',
   client_request_id TEXT UNIQUE,
   note TEXT,
-  envelope_id TEXT
+  envelope_id TEXT,
+  project_id TEXT
 );
 CREATE TABLE IF NOT EXISTS debts (
   id TEXT PRIMARY KEY,
@@ -176,6 +191,19 @@ CREATE TABLE IF NOT EXISTS ious (
   note TEXT,
   settled_ts INTEGER,
   settled_amt REAL
+);
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  category TEXT NOT NULL DEFAULT 'other',
+  priority TEXT NOT NULL DEFAULT 'planned',
+  budget REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  icon TEXT NOT NULL DEFAULT '📦',
+  created_ts INTEGER NOT NULL,
+  target_ts INTEGER
 );
 `;
 
